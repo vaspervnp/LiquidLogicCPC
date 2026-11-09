@@ -28,6 +28,13 @@ dlist_b         equ #0800
 
 start:
         di
+        ld hl,0                 ; τα vectors του firmware, για το disc.asm
+        ld de,fw_low
+        ld bc,64
+        ldir
+        ei
+        call load_progress      ; με το firmware ακόμα ενεργό
+        di
         ld sp,STACK_TOP
         im 1
         ld a,#C3                ; JP int_handler στο #38 (sound.asm)
@@ -44,8 +51,6 @@ start:
         ld a,r                  ; seed (≠ 0)
         or 1
         ld (rnd_seed),a
-        ld a,1                  ; πρόοδος: ξεκλείδωτη μόνο η 1η πίστα
-        ld (unlocked),a
         ei                      ; από εδώ ο ήχος παίζει από το interrupt
         call title_start
 
@@ -69,6 +74,7 @@ main_loop:
         include "game.asm"
         include "ui.asm"
         include "sound.asm"
+        include "disc.asm"
         include "gfx.asm"
         include "physics.asm"
         include "sound_data.asm"
@@ -101,8 +107,11 @@ mus_a:          ds MC_SIZE      ; μελωδία, και αμέσως μετά
 mus_c:          ds MC_SIZE      ; το μπάσο
 mode:           db 0            ; MODE_*: τίτλος, επιλογή, παιχνίδι
 sel_level:      db 0
-unlocked:       db 1            ; πόσες πίστες παίζονται
-stars:          ds MAX_LEVELS   ; τα καλύτερα αστέρια ανά πίστα (0-3)
+unlocked:       db 1            ; πόσες πίστες παίζονται      } LIQUID.SAV,
+stars:          ds MAX_LEVELS   ; καλύτερα αστέρια ανά πίστα  } συνεχόμενα
+fw_low:         ds 64           ; #0000-#003F του firmware (disc.asm)
+fw_sp:          dw 0
+save_dirty:     db 0            ; 1 = η πρόοδος άλλαξε (award_stars)
 tmp_stars:      db 0
 big_row:        ds 4
 paused_timer:   db 0
@@ -132,6 +141,8 @@ row_len:        db 0,0
 bottles:        ds MAX_BOTTLES*BOT_SIZE
 
 state:          db 0
+shake_cnt:      db 0            ; καρέ που μένουν στο χοροπηδητό
+shake_bot:      db 0
 cursor:         db 0
 sel_src:        db 0
 sel_dst:        db 0

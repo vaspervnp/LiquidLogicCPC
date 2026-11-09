@@ -70,6 +70,7 @@ RUN"DISC
 ```bash
 make assets   # ξαναπαράγει γραφικά, πίνακες φυσικής και πίστες (assets/data)
 make shot     # headless emulator -> build/screenshot.png
+make shot32   # Caprice32 χωρίς παράθυρο -> build/cap32_*.png
 make test     # headless emulator: λύνει και τις 100 πίστες, ελέγχει κάθε ειδικό τύπο
 make sound    # headless emulator: μουσική τίτλου και πίστα 1 -> build/sound_*.wav
 make clean
@@ -82,9 +83,13 @@ src/          Z80 πηγαίος κώδικας (main, hw, screen, particles, ..
 assets/src/   Python που παράγει τα γραφικά
 assets/data/  παραγόμενα δεδομένα (db) για το rasm
 tools/        γεννήτρια πιστών με solver, headless test
+docs/         εγχειρίδιο (manual-el.md, manual-en.md)
 plan.md       σχέδιο ανάπτυξης και ορόσημα
 ```
 
 ## Κατάσταση
 
-Σε ανάπτυξη — δες τα ορόσημα στο [plan.md](plan.md#9-ορόσημα).
+Όλα τα ορόσημα M0–M7 του [plan.md](plan.md#9-ορόσημα) είναι έτοιμα: 100
+πίστες, ειδικοί τύποι, ήχος, αποθήκευση προόδου. Ελεγμένο στον headless
+emulator (λύνει όλες τις πίστες) και στον Caprice32· όχι ακόμα σε πραγματικό
+CPC. Εγχειρίδιο: [ελληνικά](docs/manual-el.md), [English](docs/manual-en.md).

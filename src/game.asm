@@ -37,6 +37,8 @@ level_load:
         ret
 
 level_start:
+        xor a
+        ld (shake_cnt),a
         call music_stop
         call cls
         call level_load
@@ -90,6 +92,9 @@ game_frame:
         ld a,PEN_LIQUID
         jp hud_message
 .state: ld a,(state)
+        or a
+        call z,shake_frame
+        ld a,(state)
         cp ST_POUR
         jp z,.pour
         cp ST_WIN
@@ -144,10 +149,16 @@ game_frame:
         ld a,(ix+B_CNT)
         or a
         ret z
-        ld a,(ix+B_DONE)        ; ολοκληρωμένο, παγωμένο, κλειδωμένο: όχι
-        or (ix+B_FREEZE)
-        or (ix+B_LOCK)
+        ld a,(ix+B_DONE)        ; ολοκληρωμένο: όχι
+        or a
         ret nz
+        ld a,(ix+B_FREEZE)      ; παγωμένο, κλειδωμένο: χοροπηδάει
+        or (ix+B_LOCK)
+        ld a,(cursor)
+        jp nz,shake_start
+        call shake_stop         ; (αλλάζει A, IX)
+        ld a,(cursor)
+        call bottle_ix
         ld a,(cursor)
         ld (sel_src),a
         ld (ix+B_RAISE),RAISE_H
@@ -174,9 +185,9 @@ game_frame:
         ld a,ST_POUR
         ld (state),a
         ret
-.bad:   call deselect           ; άκυρη: ακύρωση και βουητό
-        ld hl,sfx_error
-        jp play_sfx
+.bad:   call deselect           ; άκυρη: ακύρωση, βουητό, ο στόχος χοροπηδάει
+        ld a,(sel_dst)
+        jp shake_start
 .pour:  call particles_frame
         ret nz
         call pour_finish
@@ -230,7 +241,14 @@ game_frame:
         ld a,(paused_timer)
         ld (timer_on),a
         jp hud_draw
-.win:   call .menu
+.win:   ld a,(input_new)        ; φεύγοντας από τη νίκη: αποθήκευση, αν άλλαξε
+        and IN_RESTART|IN_FIRE|IN_ESC   ; κάτι (δεν ξανατρέχει: save_dirty = 0)
+        ld b,a
+        ld a,(input2_new)
+        and IN2_MENU
+        or b
+        call nz,save_if_dirty
+        call .menu
         ld a,(input_new)
         and IN_RESTART
         jp nz,level_start
@@ -257,6 +275,19 @@ game_frame:
 .tomenu:
         pop hl
         jp select_start
+
+; Η πρόοδος στη δισκέτα, αν άλλαξε από την τελευταία φορά (award_stars).
+; ~2 s: η οθόνη δείχνει SAVING και μένει ακίνητη.
+save_if_dirty:
+        ld a,(save_dirty)
+        or a
+        ret z
+        xor a
+        ld (save_dirty),a
+        ld hl,str_saving
+        ld a,PEN_WHITE
+        call hud_message
+        jp save_progress
 
 ; Νίκη: αστέρια (award_stars) και τι κάνει το SPACE / το M, στη θέση του HUD.
 win_message:
@@ -294,6 +325,46 @@ win_message:
         ld bc,HUD_Y*256+60
         ld a,PEN_GLASS
         jp print_str
+
+; Άκυρη κίνηση: το μπουκάλι A χοροπηδάει (B_RAISE 3/0) για SHAKE_FRAMES
+; καρέ, με το βουητό. Μόνο σε ST_IDLE· πριν από κάθε επιλογή shake_stop.
+SHAKE_FRAMES    equ 8
+shake_start:
+        push af
+        call shake_stop
+        pop af
+        ld (shake_bot),a
+        ld a,SHAKE_FRAMES
+        ld (shake_cnt),a
+        ld hl,sfx_error
+        jp play_sfx
+
+shake_frame:
+        ld a,(shake_cnt)
+        or a
+        ret z
+        dec a
+        ld (shake_cnt),a
+        and 2
+        jr z,.set
+        ld a,3
+.set:   push af
+        ld a,(shake_bot)
+        call bottle_ix
+        pop af
+        ld (ix+B_RAISE),a
+        jp redraw_bottle
+
+shake_stop:
+        ld a,(shake_cnt)
+        or a
+        ret z
+        xor a
+        ld (shake_cnt),a
+        ld a,(shake_bot)
+        call bottle_ix
+        ld (ix+B_RAISE),0
+        jp redraw_bottle
 
 ; Μετά από κάθε μετάγγιση (τα σωματίδια έχουν σβηστεί): ξεκλείδωμα όσων
 ; περιμένουν το χρώμα που μόλις ολοκληρώθηκε, και ο πάγος μετράει μία κίνηση.
@@ -784,6 +855,7 @@ str_undo:       db "UNDO",0
 str_time:       db "TIME",0
 str_extra:      db "E+",0
 str_clear:      db "LEVEL CLEAR",0
+str_saving:     db "SAVING...",0
 str_stars:      db "***",0
 str_next:       db "SPACE NEXT",0
 str_menu:       db "M MENU",0

@@ -141,6 +141,11 @@ class Game:
         """Πίστα index (από 0): γράφεται στο level και R."""
         self.c.write_ram(self.sym["level"], bytes([index]))
         self.key(ord("R"))
+        for _ in range(300):            # (μετά από νίκη: πρώτα η αποθήκευση)
+            if (self.peek("level") == index and self.peek("moves") == 0 and
+                    self.peek("state") == ST_IDLE and self.peek("undo_left") == UNDO_MAX):
+                break
+            self.c.run_frames(1)
         self.c.run_frames(25)           # όλη η οθόνη ξανασχεδιάζεται
         self.check(self.peek("level") == index and self.peek("moves") == 0 and self.peek("undo_left") == UNDO_MAX,
                    f"φόρτωμα πίστας {index + 1}")
@@ -267,14 +272,36 @@ def ui_checks(g, levs):
     g.key(0x03)
     c.run_frames(3)
     g.check(g.peek("state") == ST_IDLE, "ESC στην παύση: δεν συνέχισε")
+    # άκυρη μετάγγιση: ο στόχος χοροπηδάει και ξανακάθεται
+    b = levs[0]["bottles"]
+    bad = next(((a, d) for a in range(len(b)) for d in range(len(b))
+                if a != d and b[a]["layers"] and b[d]["layers"] and
+                b[a]["layers"][-1] != b[d]["layers"][-1]), None)
+    g.select(bad[0])
+    g.goto(bad[1])
+    g.c.tap_key(KEY_SPACE, hold_frames=1, gap_frames=0)
+    c.run_frames(2)
+    g.check(g.peek("shake_cnt") > 0, "άκυρη μετάγγιση: κανένα χοροπηδητό")
+    c.run_frames(30)                    # κάθε ανασχεδίαση ~2 καρέ
+    g.check(g.peek("shake_cnt") == 0 and g.bot(bad[1], B_RAISE) == 0, "το χοροπηδητό δεν τελείωσε")
     # λύση στο par -> 3 αστέρια, ξεκλείδωμα της 2
     g.play(levs[0], "πίστα 1 (μενού)")
-    shot(c, "test_win.png")
     g.check(g.peek("stars") == 3, f"αστέρια {g.peek('stars')}, όχι 3")
     g.check(g.peek("unlocked") == 2, f"ξεκλείδωτες {g.peek('unlocked')}, όχι 2")
-    g.key(ord("M"))
-    c.run_frames(10)
+    shot(c, "test_win.png")
+    g.key(ord("M"))                     # φεύγοντας από τη νίκη: αποθήκευση
+    c.run_frames(200)
     g.check(g.peek("mode") == MODE_SELECT, "M στη νίκη: όχι μενού")
+    # αποθήκευση: το LIQUID.SAV στη δισκέτα, και φορτώνεται σε νέα εκκίνηση
+    img = c.disc_image()
+    g.check(b"LIQUID  SAV" in img, "το LIQUID.SAV δεν γράφτηκε στη δισκέτα")
+    c2 = CPC()
+    c2.run_frames(150)
+    c2.insert_disc(img)
+    c2.type_text('RUN"DISC\n')
+    c2.run_frames(500)
+    g.check(c2.peek(g.sym["unlocked"]) == 2 and c2.peek(g.sym["stars"]) == 3 and
+            c2.peek(g.sym["mode"]) == MODE_TITLE, "η πρόοδος δεν φορτώθηκε μετά από επανεκκίνηση")
     shot(c, "test_select2.png")
     g.key(KEY_RIGHT)
     g.key(KEY_SPACE)

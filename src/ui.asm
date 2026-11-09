@@ -406,7 +406,10 @@ award_stars:
         ld a,c
         cp (hl)
         jr c,.keep
+        jr z,.keep
         ld (hl),a
+        ld a,1
+        ld (save_dirty),a
 .keep:  ld a,(level)            ; ξεκλείδωμα της επόμενης
         add a,2
         cp LEVEL_COUNT+1
@@ -415,7 +418,10 @@ award_stars:
 .lim:   ld hl,unlocked
         cp (hl)
         jr c,.done
+        jr z,.done
         ld (hl),a
+        ld a,1
+        ld (save_dirty),a
 .done:  ld a,c
         ret
 

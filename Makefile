@@ -3,6 +3,7 @@
 #   make            build/LiquidLogic.dsk (Extended DSK)
 #   make assets     ξαναπαράγει τα assets/data (γραφικά, πίνακες, πίστες)
 #   make shot       headless emulator (~/cpcemu) -> build/screenshot.png
+#   make shot32     Caprice32 χωρίς παράθυρο: τίτλος και πίστα 1 -> build/cap32_*.png
 #   make test       headless: λύνει πίστες με τα πλήκτρα, undo -> build/test_*.png
 #   make sound      headless: οι registers του AY -> build/sound_*.wav
 #   make clean
@@ -18,7 +19,7 @@ LOADER   := $(BUILD)/disc.bas
 SRC      := $(wildcard src/*.asm)
 DATA     := assets/data/gfx.asm assets/data/physics.asm assets/data/levels.asm assets/data/sound_data.asm
 
-.PHONY: all assets shot test sound clean
+.PHONY: all assets shot shot32 test sound clean
 
 all: $(DSK)
 
@@ -50,6 +51,10 @@ assets:
 
 shot: $(DSK)
 	$(PYTHON) tools/headless.py shot
+
+shot32: $(DSK)
+	tools/cap32_shot.sh $(DSK) $(BUILD)/cap32_title.png
+	PAD=700 KEY=" " tools/cap32_shot.sh $(DSK) $(BUILD)/cap32_level1.png
 
 test: $(DSK)
 	$(PYTHON) tools/headless.py test
