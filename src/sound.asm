@@ -21,11 +21,33 @@ int_handler:
         rra
         jr nc,.count
         xor a
-        ld (int_idx),a
-        jr .out
-.count: ld a,(int_idx)
+        jr .zero
+.count: ld a,(int_idx)           ; mod 6: αν ένα interrupt έρθει αργά (DI στο
+        inc a                   ; xor_list) και δεν δει το VSYNC, ο μετρητής
+        cp 6                    ; μένει σωστός
+        jr c,.idx
+        xor a
+.zero:  ld (int_idx),a          ; νέο καρέ (για τη μέτρηση late frames)
+        ld a,(frames_int)
         inc a
-        ld (int_idx),a
+        ld (frames_int),a
+        xor a
+.idx:   ld (int_idx),a
+        push hl                 ; το χρώμα του φόντου (pen 0 + border) της ζώνης
+        ld hl,bg_bands
+        add a,l
+        ld l,a
+        jr nc,.bg
+        inc h
+.bg:    ld a,(hl)
+        ld bc,#7F00
+        out (c),c
+        out (c),a
+        ld c,#10
+        out (c),c
+        out (c),a
+        pop hl
+        ld a,(int_idx)
         cp SOUND_INT
         jr nz,.out
         push de
@@ -39,6 +61,17 @@ int_handler:
         pop af
         ei
         ret
+
+; Διαβάθμιση του φόντου: ένα χρώμα ανά interrupt (ζώνες των 52 γραμμών).
+; Το idx 2 πέφτει περίπου στη γραμμή 34 της εικόνας, το 3 στην 86, το 4 στην
+; 138, το 5 στη 190· το HUD μένει σε μαύρο. Κανένα από αυτά δεν είναι χρώμα
+; υγρού: το άδειο μέρος του μπουκαλιού είναι pen 0 και θα έμοιαζε γεμάτο.
+bg_bands:
+        db #54,#54              ; VSYNC, πάνω border + HUD: μαύρο
+        db #54                  ; μαύρο (οι λαιμοί της 1ης σειράς)
+        db #44                  ; μπλε
+        db #58                  ; σκούρο ματζέντα
+        db #58                  ; κάτω και border
 
 MIX_TONES       equ %00111000   ; τόνοι A, B, C, χωρίς θόρυβο
 MIX_NOISE_B     equ %00101010   ; τόνοι A, C· θόρυβος στο B

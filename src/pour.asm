@@ -88,6 +88,27 @@ try_pour:
         pop ix
         call uncurtain
         pop ix
+        ; η πηγή γέρνει προς τον στόχο (όχι έξω από την οθόνη)
+        ld a,(iy+B_X)
+        cp (ix+B_X)
+        ld b,0
+        jr z,.tilt
+        ld b,1
+        jr nc,.right
+        ld a,(ix+B_X)
+        cp 2
+        ld b,-1
+        jr nc,.tilt
+        ld b,0
+        jr .tilt
+.right: ld a,(ix+B_X)
+        cp 80-BOTTLE_W-2+1
+        jr c,.tilt
+        ld b,0
+.tilt:  ld (ix+B_TILT),b
+        ld a,b
+        or a
+        call nz,redraw_bottle
 
         ; γραμμές οθόνης πριν
         ld a,(ix+B_CNT)
@@ -237,9 +258,14 @@ try_pour:
         ld l,0
         ld (emit_y),hl
         ; vx = dx * (65536/T) / 256
+        ld a,(ix+B_TILT)        ; το στόμιο, μετατοπισμένο από το γέρσιμο (x4 pixels)
+        add a,a
+        add a,a
+        ld c,a
         ld a,(ix+B_X)
         add a,a
         add a,MOUTH_X
+        add a,c
         ld h,a
         ld l,#80
         ld (emit_x),hl
@@ -311,6 +337,7 @@ pour_finish:
         call liquid_sync
         ld ix,(pour_src)
         ld (ix+B_RAISE),0
+        ld (ix+B_TILT),0
         call redraw_bottle
         ld ix,(pour_dst)
         call check_done

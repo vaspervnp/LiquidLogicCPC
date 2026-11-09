@@ -51,12 +51,33 @@ scr_addr:
         inc h
         ret
 
+; Με push (11 T-states ανά 2 bytes, ~4 φορές γρηγορότερα από το ldir). Κάθε
+; 128 bytes ανοίγει για λίγο τα interrupts: ό,τι σπρώξει ο handler στη στοίβα
+; πέφτει κάτω από το SP, σε οθόνη που δεν έχει καθαριστεί ακόμα (ή, στο τέλος,
+; στο αχρησιμοποίητο #BFxx).
 cls:
-        ld hl,#C000
-        ld de,#C001
-        ld bc,#3FFF
-        ld (hl),0
-        ldir
+        di
+        ld (sp_save),sp
+        ld hl,0
+        ld sp,hl
+        ld a,128
+.blk:   ld b,8
+.p:     push hl
+        push hl
+        push hl
+        push hl
+        push hl
+        push hl
+        push hl
+        push hl
+        djnz .p
+        ei
+        nop
+        di
+        dec a
+        jr nz,.blk
+        ld sp,(sp_save)
+        ei
         ret
 
 ; in: HL = γραφικό, DE = οθόνη, B = ύψος, C = πλάτος (bytes).

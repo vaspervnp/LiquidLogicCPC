@@ -14,6 +14,7 @@ B_LAY           equ 8           ; στρώσεις από κάτω: pen, bit 7 =
 B_FLAGS         equ 14          ; BF_*
 B_FREEZE        equ 15          ; κινήσεις ως το ξεπάγωμα (0 = όχι πάγος)
 B_LOCK          equ 16          ; pen του λουκέτου (0 = όχι)
+B_TILT          equ 17          ; γέρσιμο στη μετάγγιση: 1 δεξιά, -1 αριστερά, 0
 BOT_SIZE        equ 24
 MAX_BOTTLES     equ 14
 MAX_CAP         equ 6
@@ -138,6 +139,39 @@ bottle_init:
         ld (ix+B_CNT),a
         ld (ix+B_FREEZE),a
         ld (ix+B_LOCK),a
+        ld (ix+B_TILT),a
+        ret
+
+; Γέρσιμο (B_TILT): κάθε γραμμή του μπουκαλιού μετατοπίζεται οριζόντια κατά
+; tilt_table pixels (4 στο χείλος ως 0 στον πάτο: διάτμηση). Οι μονές
+; μετατοπίσεις σχεδιάζονται με το bottle_gfx_odd (1 pixel δεξιά).
+; in: A = γραμμή μέσα στο μπουκάλι (0 = χείλος), IX. out: A = pixels (signed).
+tilt_px:
+        bit 7,(ix+B_TILT)       ; (τα bit/inc/dec κρατάνε το A)
+        jr nz,.on
+        inc (ix+B_TILT)
+        dec (ix+B_TILT)
+        jr nz,.on
+        xor a
+        ret
+.on:    push hl
+        push de
+        ld l,a
+        ld h,0
+        ld de,tilt_table
+        add hl,de
+        ld a,(hl)
+        pop de
+        pop hl
+        bit 7,(ix+B_TILT)
+        ret z
+        neg
+        ret
+
+; Το ίδιο, σε bytes (στρογγύλεμα προς τα κάτω).
+tilt_dx:
+        call tilt_px
+        sra a
         ret
 
 ; Μοιράζει τα nbottles μπουκάλια σε σειρές και τα κεντράρει (B_X, B_Y, B_ROW).
@@ -271,19 +305,32 @@ check_done:
 
 ;------------------------------------------------------------------
 ; Γραμμή υγρού. in: IX = μπουκάλι, A = γραμμή από κάτω (0..59),
-; C = pen (0 = άδεια). Κρατάει τα BC, IX.
+; C = pen (0 = άδεια). Κρατάει τα BC, IX. Με μονή μετατόπιση γερσίματος η
+; γραμμή πιάνει 7 bytes, με τα pixels του γυαλιού στις άκρες.
 liquid_row:
         push bc
         ld b,a
+        ld a,(ix+B_TILT)        ; όρθιο: χωρίς το tilt_px (A = D = 0)
+        ld d,a
+        or a
+        jr z,.x
+        ld a,BODY_BOTTOM
+        sub b
+        call tilt_px
+        ld d,a                  ; D = μετατόπιση σε pixels
+        sra a
+.x:     inc a
+        add a,(ix+B_X)
+        ld c,a
         ld a,(ix+B_Y)
         sub (ix+B_RAISE)
         add a,BODY_BOTTOM
         sub b
-        ld c,(ix+B_X)
-        inc c
         call scr_addr
         pop bc
         push bc
+        bit 0,d
+        jr nz,.odd
         ld a,c
         or a
         jr z,.empty
@@ -314,9 +361,57 @@ liquid_row:
         ld (hl),a
         pop bc
         ret
+.odd:   ld a,c                  ; γυαλί|υγρό, λάμψη|υγρό, 4 × υγρό, υγρό|γυαλί
+        or a
+        jr z,.oempty
+        ld e,c
+        ld d,0
+        push hl
+        ld hl,pen_right
+        add hl,de
+        ld b,(hl)
+        ld hl,pen_left
+        add hl,de
+        ld a,(hl)
+        or PR_GLASS
+        ld c,a
+        ld hl,pen_both
+        add hl,de
+        ld e,(hl)
+        pop hl
+        ld a,b
+        or PL_GLASS
+        ld (hl),a
+        inc hl
+        ld a,b
+        or PL_WHITE
+        ld (hl),a
+        ld a,e
+        jr .omid
+.oempty:
+        ld (hl),PL_GLASS
+        inc hl
+        ld (hl),PL_GLASS
+        xor a
+        ld c,PR_GLASS
+.omid:  inc hl
+        ld (hl),a
+        inc hl
+        ld (hl),a
+        inc hl
+        ld (hl),a
+        inc hl
+        ld (hl),a
+        inc hl
+        ld (hl),c
+        pop bc
+        ret
 
 ; Ολόκληρο μπουκάλι (γυαλί, υγρό, σημάνσεις, φελλός). IX = μπουκάλι.
 draw_bottle:
+        ld a,(ix+B_TILT)
+        or a
+        jr nz,.tilted
         call bottle_top
         ld c,(ix+B_X)
         call scr_addr
@@ -324,6 +419,52 @@ draw_bottle:
         ld hl,bottle_gfx
         ld bc,BOTTLE_H*256+BOTTLE_W
         call draw_sprite
+        jr .liquid
+.tilted:                        ; γραμμή-γραμμή, με τη μετατόπιση του γερσίματος
+        xor a
+        ld (tilt_row),a
+.trow:  ld a,(tilt_row)
+        call tilt_px
+        ld b,a
+        sra a
+        add a,(ix+B_X)
+        ld c,a
+        push bc
+        call bottle_top
+        ld b,a
+        ld a,(tilt_row)
+        add a,b
+        call scr_addr
+        ex de,hl
+        pop bc
+        ld a,(tilt_row)         ; HL = γραμμή του bottle_gfx ή του _odd
+        ld l,a
+        ld h,0
+        bit 0,b
+        jr nz,.t9
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        ld bc,bottle_gfx
+        add hl,bc
+        ld bc,BOTTLE_W
+        jr .tcp
+.t9:    ld b,h
+        ld c,l
+        add hl,hl
+        add hl,hl
+        add hl,hl
+        add hl,bc
+        ld bc,bottle_gfx_odd
+        add hl,bc
+        ld bc,BOTTLE_W+1
+.tcp:   ldir
+        ld hl,tilt_row
+        inc (hl)
+        ld a,(hl)
+        cp BOTTLE_H
+        jr nz,.trow
+.liquid:
         ld a,(ix+B_CNT)
         or a
         jr z,draw_marks
@@ -375,10 +516,13 @@ draw_marks:
         ret z
         ld hl,bulb_gfx
 .top:   push hl                 ; φελλός / βολβός στο λαιμό
+        xor a
+        call tilt_dx
+        add a,(ix+B_X)
+        inc a
+        inc a
+        ld c,a
         call bottle_top
-        ld c,(ix+B_X)
-        inc c
-        inc c
         call scr_addr
         ex de,hl
         pop hl
@@ -388,6 +532,9 @@ draw_marks:
 ; Άλλη χωρητικότητα από της πίστας: λευκές εγκοπές και στους δύο τοίχους
 ; (γυαλί, που δεν το αγγίζει το υγρό), στα όρια των στρώσεων.
 draw_ticks:
+        ld a,(ix+B_TILT)        ; γερμένο: χωρίς εγκοπές ως το pour_finish
+        or a
+        ret nz
         ld b,(ix+B_CAP)
         dec b
         ret z
@@ -468,11 +615,16 @@ draw_hidden_q:
         jr z,.next
         push bc
         push hl
+        call bottle_top         ; μετατόπιση του γερσίματος στη γραμμή C
+        ld b,a
         ld a,c
-        ld c,(ix+B_X)
-        inc c
-        inc c
-        inc c
+        sub b
+        call tilt_dx
+        add a,(ix+B_X)
+        add a,3
+        ld b,c
+        ld c,a
+        ld a,b
         call scr_addr
         ex de,hl
         ld hl,hidden_q_gfx
@@ -576,13 +728,26 @@ draw_lock:
         djnz .ln
         ret
 
-; Σβήνει και ξανασχεδιάζει (για σήκωμα / κατέβασμα). IX = μπουκάλι.
+; Σβήνει και ξανασχεδιάζει (σήκωμα, κατέβασμα, γέρσιμο). Σβήνει και 2 bytes
+; δεξιά-αριστερά (για το γέρσιμο), μέσα στο κενό ως τα διπλανά μπουκάλια.
 redraw_bottle:
+        ld a,(ix+B_X)
+        sub 2
+        jr nc,.left
+        xor a
+.left:  ld c,a
+        ld a,(ix+B_X)
+        add a,BOTTLE_W+2
+        cp 81
+        jr c,.right
+        ld a,80
+.right: sub c
+        ld e,a                  ; πλάτος
         ld a,(ix+B_Y)
         sub RAISE_H
-        ld c,(ix+B_X)
         call scr_addr
-        ld bc,(BOTTLE_H+RAISE_H)*256+BOTTLE_W
+        ld b,BOTTLE_H+RAISE_H
+        ld c,e
         call clear_rect
         jp draw_bottle
 

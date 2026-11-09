@@ -41,8 +41,17 @@ level_start:
         ld (shake_cnt),a
         call music_stop
         call cls
-        call level_load
-        ld hl,level_buf
+        ld a,(relax)
+        or a
+        jr z,.load
+        ld a,(relax_new)        ; «Χαλάρωση»: καινούργια, ή ξανά η ίδια (R)
+        or a
+        call nz,relax_gen
+        xor a
+        ld (relax_new),a
+        jr .setup
+.load:  call level_load
+.setup: ld hl,level_buf
         call level_setup
         xor a
         ld (moves),a
@@ -233,6 +242,13 @@ game_frame:
         ld a,(input_new)
         and IN_RESTART
         jp nz,level_start
+        ld a,(relax)            ; «Χαλάρωση»: SPACE = άλλη πίστα
+        or a
+        jr z,.resume
+        ld a,(input_new)
+        and IN_FIRE
+        jr nz,.relax_next
+.resume:
         ld a,(input_new)
         and IN_ESC
         ret z
@@ -255,7 +271,14 @@ game_frame:
         ld a,(input_new)
         and IN_FIRE
         ret z
-        ld a,(level)            ; επόμενη πίστα (μετά την τελευταία: μενού)
+        ld a,(relax)
+        or a
+        jr z,.next
+.relax_next:
+        ld a,1
+        ld (relax_new),a
+        jp level_start
+.next:  ld a,(level)            ; επόμενη πίστα (μετά την τελευταία: μενού)
         inc a
         cp LEVEL_COUNT
         jp nc,select_start
@@ -274,6 +297,9 @@ game_frame:
         ret z
 .tomenu:
         pop hl
+        ld a,(relax)            ; από τη «Χαλάρωση»: στον τίτλο
+        or a
+        jp nz,title_start
         jp select_start
 
 ; Η πρόοδος στη δισκέτα, αν άλλαξε από την τελευταία φορά (award_stars).
@@ -291,7 +317,18 @@ save_if_dirty:
 
 ; Νίκη: αστέρια (award_stars) και τι κάνει το SPACE / το M, στη θέση του HUD.
 win_message:
-        call award_stars
+        ld a,(relax)
+        or a
+        jr z,.stars
+        ld a,1                  ; «Χαλάρωση»: χωρίς αστέρια και αποθήκευση
+        ld (hud_msg),a
+        call hud_clear
+        ld hl,str_solved
+        ld bc,HUD_Y*256+2
+        ld a,PEN_WHITE
+        call print_str
+        jr .keys
+.stars: call award_stars
         ld hl,str_stars+3
         sub 3
         neg
@@ -317,7 +354,7 @@ win_message:
         pop hl
         pop af
         ld (hl),a               ; πίσω το "***"
-        ld hl,str_next
+.keys:  ld hl,str_next
         ld bc,HUD_Y*256+36
         ld a,PEN_LIQUID+5
         call print_str
@@ -455,6 +492,8 @@ snap_ptr:
         djnz .add
         ret
 
+; Ξανασχεδιάζονται μόνο τα μπουκάλια που διαφέρουν από το στιγμιότυπο (όχι όλη
+; η οθόνη): λίγα καρέ, ώστε να μη χάνονται πατήματα πλήκτρων.
 do_undo:
         ld a,(undo_left)
         or a
@@ -465,23 +504,47 @@ do_undo:
         dec a
         ld (undo_sp),a
         call snap_ptr
-        ld de,bottles
-        ld bc,MAX_BOTTLES*BOT_SIZE
-        ldir
+        push hl
+        ld de,MAX_BOTTLES*BOT_SIZE      ; οι κινήσεις, μετά τα μπουκάλια
+        add hl,de
         ld a,(hl)
         ld (moves),a
+        pop hl
+        ld (undo_ptr),hl
+        ld ix,bottles
+        ld a,(nbottles)
+        ld b,a
+.bot:   push bc
+        ld hl,(undo_ptr)
+        push ix
+        pop de
+        ld b,BOT_SIZE
+.cmp:   ld a,(de)
+        cp (hl)
+        jr nz,.diff
+        inc hl
+        inc de
+        djnz .cmp
+        jr .next
+.diff:  ld hl,(undo_ptr)        ; διαφέρει: αντιγραφή και ανασχεδίαση
+        push ix
+        pop de
+        ld bc,BOT_SIZE
+        ldir
+        ld (ix+B_RAISE),0
+        call redraw_bottle
+.next:  ld hl,(undo_ptr)
+        ld de,BOT_SIZE
+        add hl,de
+        ld (undo_ptr),hl
+        add ix,de
+        pop bc
+        djnz .bot
         ld hl,undo_left
         dec (hl)
         ld hl,sfx_undo
         call play_sfx
-        ld a,(nbottles)         ; κανένα σηκωμένο
-        ld b,a
-        ld ix,bottles
-        ld de,BOT_SIZE
-.low:   ld (ix+B_RAISE),0
-        add ix,de
-        djnz .low
-        jp redraw_all
+        jp hud_draw
 
 ; Ολόκληρη η οθόνη από την αρχή.
 redraw_all:
@@ -566,7 +629,15 @@ hud_draw:
         xor a
         ld (hud_msg),a
         call hud_clear
-        ld hl,str_lv
+        ld a,(relax)
+        or a
+        jr z,.lvn
+        ld hl,str_relax
+        ld bc,HUD_Y*256+1
+        ld a,PEN_LIQUID+2
+        call print_str
+        jr .lvdone
+.lvn:   ld hl,str_lv
         ld bc,HUD_Y*256+1
         ld a,PEN_WHITE
         call print_str
@@ -582,6 +653,7 @@ hud_draw:
 .lv:    ld bc,HUD_Y*256+6
         ld a,PEN_LIQUID+2
         call print_str
+.lvdone:
         ld a,(level_moves)
         or a
         jr z,.moves
@@ -849,12 +921,14 @@ row_info:
         ret
 
 str_lv:         db "LV",0
+str_relax:      db "RELAX",0
 str_moves:      db "MOVES",0
 str_left:       db "LEFT",0
 str_undo:       db "UNDO",0
 str_time:       db "TIME",0
 str_extra:      db "E+",0
 str_clear:      db "LEVEL CLEAR",0
+str_solved:     db "SOLVED!",0
 str_saving:     db "SAVING...",0
 str_stars:      db "***",0
 str_next:       db "SPACE NEXT",0

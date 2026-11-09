@@ -13,6 +13,7 @@
     screenshots στο build/test_*.png, GIF μιας μετάγγισης στο build/pour.gif
 
     python3 tools/headless.py test 7    # μόνο η πίστα 7 (και οι έλεγχοί της)
+    python3 tools/headless.py relax 5   # μόνο η «Χαλάρωση», 5 τυχαίες πίστες
 
 CPCHEADLESS=/path για άλλον φάκελο του emulator. Βγαίνει με 1 αν κάποιος
 έλεγχος αποτύχει.
@@ -189,7 +190,7 @@ def special_checks(g, lv, idx):
         g.play(lv, name, upto=1)
         g.check(g.bot(fz, B_FREEZE) == k - 1, f"{name}: ο πάγος δεν μέτρησε την κίνηση")
         g.key(ord("U"))
-        c.run_frames(20)                # το undo ξανασχεδιάζει όλη την οθόνη
+        c.run_frames(10)                # το undo ξανασχεδιάζει όσα άλλαξαν
         g.check(g.bot(fz, B_FREEZE) == k and g.peek("moves") == 0, f"{name}: undo δεν επανέφερε τον πάγο")
         g.load_level(idx)
     # λουκέτο: δεν επιλέγεται ως το χρώμα του
@@ -309,6 +310,64 @@ def ui_checks(g, levs):
     g.check(g.peek("mode") == MODE_GAME and g.peek("level") == 1, "η ξεκλείδωτη πίστα 2 δεν ξεκίνησε")
 
 
+def relax_checks(g, puzzles=3):
+    """«Χαλάρωση»: R στον τίτλο, τυχαίες πίστες που λύνονται, SPACE = άλλη,
+    R = ξανά η ίδια, M = τίτλος."""
+    c = g.c
+    if g.peek("mode") == MODE_GAME:     # παύση -> μενού -> τίτλος
+        g.key(0x03)
+        c.run_frames(3)
+        g.key(ord("M"))
+        c.run_frames(25)
+    if g.peek("mode") == MODE_SELECT:
+        g.key(0x03)
+        c.run_frames(25)
+    g.check(g.peek("mode") == MODE_TITLE, "χαλάρωση: όχι στον τίτλο")
+    g.key(ord("R"))
+    c.run_frames(25)
+    for k in range(puzzles):
+        name = f"χαλάρωση {k + 1}"
+        g.check(g.peek("mode") == MODE_GAME and g.peek("relax") == 1 and g.peek("state") == ST_IDLE,
+                f"{name}: δεν ξεκίνησε")
+        lay = g.layers()
+        ncol = g.peek("relax_ncol")
+        counts = {}
+        for b in lay:
+            for x in b:
+                counts[x] = counts.get(x, 0) + 1
+        g.check(5 <= ncol <= 8 and len(lay) == ncol + 2 and len(counts) == ncol and
+                all(v == 4 for v in counts.values()) and sum(1 for b in lay if not b) == 2 and
+                not any(len(b) == 4 and len(set(b)) == 1 for b in lay), f"{name}: λάθος πίστα {lay}")
+        if k == 0:
+            shot(c, "test_relax.png")
+        start = tuple(levels.bottle(4, b) for b in lay)
+        sol = levels.solve(start)
+        if sol is None:
+            print(f"{name}: χωρίς λύση από τον solver ({ncol} χρώματα): SPACE στην παύση")
+            g.key(0x03)
+            c.run_frames(3)
+            g.key(KEY_SPACE)
+            c.run_frames(25)
+            continue
+        if k == 0 and sol:                  # R: ξανά η ίδια
+            g.pour(*sol[0][:2])
+            g.key(ord("R"))
+            c.run_frames(25)
+            g.check(g.layers() == lay and g.peek("moves") == 0, f"{name}: το R δεν την ξανάστησε")
+        lv = dict(bottles=[dict(cap=4, layers=b, dropper=False, lock=0, freeze=0) for b in lay],
+                  solution=[list(m) for m in sol], par=len(sol))
+        g.play(lv, name)
+        print(f"{name}: {ncol} χρώματα, λύση σε {len(sol)}")
+        g.key(KEY_SPACE)                    # άλλη
+        c.run_frames(25)
+        g.check(g.layers() != lay, f"{name}: το SPACE δεν έφτιαξε καινούργια")
+    g.key(0x03)
+    c.run_frames(3)
+    g.key(ord("M"))
+    c.run_frames(25)
+    g.check(g.peek("mode") == MODE_TITLE and g.peek("relax") == 0, "χαλάρωση: το M δεν γύρισε στον τίτλο")
+
+
 def test(only=None):
     sym = symbols(SYM)
     levs = levels.levels()
@@ -326,7 +385,7 @@ def test(only=None):
         g.pour(i, j, gif)
         gif[0].save(os.path.join(OUT, "pour.gif"), save_all=True, append_images=gif[1:], duration=20, loop=0)
         g.key(ord("U"))
-        c.run_frames(20)
+        c.run_frames(10)
         g.check(g.layers() == start and g.peek("undo_left") == UNDO_MAX - 1 and g.peek("moves") == 0, "undo")
         b = g.layers()
         bad = next(((a, d) for a in range(len(b)) for d in range(len(b))
@@ -336,7 +395,7 @@ def test(only=None):
             g.check(g.layers() == b and g.peek("state") == ST_IDLE, f"η άκυρη {bad} άλλαξε κάτι")
         g.pour(i, j)
         g.key(ord("R"))
-        c.run_frames(3)
+        c.run_frames(25)                # (το level_start κρατάει μερικά καρέ)
         g.check(g.layers() == start and g.peek("moves") == 0 and g.peek("undo_left") == UNDO_MAX, "R")
 
     todo = range(len(levs)) if only is None else [only]
@@ -366,6 +425,8 @@ def test(only=None):
         hud = c.read_ram(0xC000 + 0x800 * 3, 80)
         g.check(g.peek("state") == ST_IDLE and any(hud[20:60]) and not any(hud[:12]), "αδιέξοδο: μήνυμα")
 
+    if only is None:
+        relax_checks(g)
     print("OK" if not g.fails else f"{g.fails} αποτυχίες")
     return 1 if g.fails else 0
 
@@ -376,6 +437,12 @@ def main():
         c = boot()
         print(shot(c, "screenshot.png"))
         return 0
+    if mode == "relax":
+        c = boot()
+        g = Game(c, symbols(SYM))
+        relax_checks(g, int(sys.argv[2]) if len(sys.argv) > 2 else 5)
+        print("OK" if not g.fails else f"{g.fails} αποτυχίες")
+        return 1 if g.fails else 0
     only = int(sys.argv[2]) - 1 if len(sys.argv) > 2 else None
     return test(only)
 

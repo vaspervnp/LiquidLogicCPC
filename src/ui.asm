@@ -23,6 +23,7 @@ mode_frame:
 title_start:
         xor a
         ld (mode),a
+        ld (relax),a
         call music_start
         call cls
         ld hl,title_bottles
@@ -35,7 +36,7 @@ title_start:
         ld bc,34*256+30
         call print_big
         ld hl,str_press
-        ld bc,160*256+29
+        ld bc,160*256+21
         ld a,PEN_WHITE
         call print_str
         ld hl,str_machine
@@ -44,7 +45,18 @@ title_start:
         jp print_str
 
 title_frame:
-        ld a,(input_new)
+        ld a,(input_new)        ; R: «Χαλάρωση»
+        and IN_RESTART
+        jr z,.fire
+        ld a,1
+        ld (relax),a
+        ld (relax_new),a
+        ld hl,sfx_select
+        call play_sfx
+        ld a,MODE_GAME
+        ld (mode),a
+        jp level_start
+.fire:  ld a,(input_new)
         and IN_FIRE
         ret z
         ld hl,sfx_select
@@ -427,6 +439,6 @@ award_stars:
 
 str_title1:     db "LIQUID",0
 str_title2:     db "LOGIC",0
-str_press:      db "PRESS SPACE",0
+str_press:      db "SPACE PLAY  R RELAX",0
 str_machine:    db "AMSTRAD CPC 6128",0
 str_select:     db "SELECT LEVEL",0

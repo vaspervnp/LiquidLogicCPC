@@ -41,7 +41,7 @@ An invalid move buzzes and the bottle bounces.
 
 ## Screens
 
-- **Title** — SPACE for level select.
+- **Title** — SPACE for level select, R for Relax mode.
 - **Level select** — 100 cells. Grey: locked. White: available. Yellow:
   solved, with their stars below. Arrows and SPACE; ESC back to the title.
 - **Level** — the HUD on top: `LV` level, `MOVES` moves (or `LEFT` moves
@@ -63,7 +63,7 @@ The best result per level is kept. Each solved level unlocks the next one.
 
 | What you see | What it means |
 |---|---|
-| Dark blue with "?" | **hidden layer**: revealed when it reaches the top. A pour stops at it, even if it is the same colour |
+| Dark cyan with "?" | **hidden layer**: revealed when it reaches the top. A pour stops at it, even if it is the same colour |
 | White crystals and a number | **frozen**: can't pour from or into it. The number drops with every move; at 0 it thaws |
 | A padlock in a colour | **locked**: opens when a bottle of that colour is completed |
 | White bulb on the neck | **dropper**: pours one layer at a time |
@@ -74,6 +74,21 @@ The best result per level is kept. Each solved level unlocks the next one.
 | `TIME n` in the HUD | **timer**: at 0, R to try again |
 
 Every 10th level is a **Challenge**: several types together and one more colour.
+
+## Relax mode
+
+From the title, press **R**. Endless random levels: 5 to 8 colours, 4 layers,
+two empty bottles plus the extra one (E), with no special bottles, timer,
+stars or saving. The HUD shows `RELAX`.
+
+| Key | Action |
+|---|---|
+| SPACE on the win screen | next random level |
+| R | the same level from the start |
+| ESC, then SPACE | pause and get another level (if you don't like this one) |
+| M / ESC on the win screen | back to the title |
+
+Nearly all of them can be solved; if you get stuck, use U, E or another level.
 
 ## When you're stuck
 

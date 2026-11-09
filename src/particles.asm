@@ -1,37 +1,48 @@
 ; particles.asm — η ροή του υγρού ως σωματίδια με βαρύτητα (plan.md §5)
 ;
 ; Αμέσως μετά το VSYNC, πριν φτάσει η δέσμη στην εικόνα (main.asm):
-;   part_erase   σβήσιμο όσων σχεδιάστηκαν (save-under, αντίστροφη σειρά)
+;   part_erase   σβήσιμο όσων σχεδιάστηκαν
 ;   liquid_sync  οι γραμμές υγρού του A/B φτάνουν τη λογική στάθμη
 ;   part_draw    σχεδίαση της λίστας που έχτισε η φυσική στο προηγούμενο καρέ
 ; Μετά, στο υπόλοιπο καρέ (particles_frame): εκπομπή από το στόμιο του A
-; και φυσική, που γράφει τη νέα λίστα σχεδίασης (διεύθυνση, μάσκα, pen).
-; Οι γραμμές υγρού αλλάζουν μόνο ενώ τα σωματίδια είναι σβησμένα, οπότε το
-; save-under δεν ξαναγράφει ποτέ παλιό περιεχόμενο πάνω τους.
+; και φυσική, που γράφει τη νέα λίστα σχεδίασης.
 ;
-; Πτήση (P_ST 1): βαλλιστική τροχιά από το A στο λαιμό του B (pour.asm).
-; Μέσα στο B (P_ST 2): τοίχοι, και στην επιφάνεια 1 στα 4 πιτσιλάει (P_ST 3)
+; Σχεδίαση με XOR: το ίδιο XOR σχεδιάζει και σβήνει, με οποιαδήποτε σειρά,
+; χωρίς save-under. Πάνω σε μαύρο (σχεδόν όλη η τροχιά) βγάζει ακριβώς το
+; χρώμα· πάνω σε γυαλί/κείμενο, για ένα καρέ, άλλο χρώμα. Η λίστα (4 bytes ανά
+; σωματίδιο: διεύθυνση, byte του XOR, κενό) διαβάζεται με POP από το stack,
+; με DI (xor_list): ~29 NOPs ανά σωματίδιο, 64 σωματίδια < 2 ms.
+; Οι γραμμές υγρού αλλάζουν μόνο ενώ τα σωματίδια είναι σβησμένα.
+;
+; Πτήση (ST 1): βαλλιστική τροχιά από το A στο λαιμό του B (pour.asm).
+; Μέσα στο B (ST 2): τοίχοι, και στην επιφάνεια 1 στα 4 πιτσιλάει (ST 3)
 ; και τα υπόλοιπα απορροφώνται. Κάθε απορρόφηση προσθέτει dst_add στο
 ; dst_acc· ανά dst_thresh ανεβαίνει μια γραμμή του B.
 
-; Τα ζωντανά σωματίδια είναι πυκνά στην αρχή του particles (p_alive): νέο
+; Εγγραφή σωματιδίου (P_SIZE bytes, στοιχισμένη στα 16: μέσα της αρκεί
+; το inc l). Τα ζωντανά είναι πυκνά στην αρχή του particles (p_alive): νέο
 ; στο τέλος, και στη θέση ενός που σβήνει μπαίνει το τελευταίο.
 P_ST            equ 0           ; 1 πτήση, 2 μέσα στο B, 3 πιτσίλισμα
-P_X             equ 1           ; 8.8, pixels mode 0
+P_VY            equ 1           ; 8.8 signed, γραμμές/καρέ
 P_Y             equ 3           ; 8.8, γραμμές
 P_VX            equ 5           ; 8.8 signed
-P_VY            equ 7           ; 8.8 signed
+P_X             equ 7           ; 8.8, pixels mode 0
 P_SIZE          equ 16
-
-; Λίστα σχεδίασης: ανά σωματίδιο διεύθυνση (y ζυγό: η y+1 είναι +#800),
-; μάσκα του άλλου pixel, pen bits, και τα 2 bytes κάτω από αυτό.
-L_SIZE          equ 6
-MAX_PART        equ 40
+L_SIZE          equ 4           ; λίστα σχεδίασης: διεύθυνση, XOR, κενό
+MAX_PART        equ 64
 
 PPL             equ 2           ; σωματίδια ανά γραμμή υγρού
 EMIT_RATE       equ 2           ; εκπομπές ανά καρέ
 SPLASH_MASK     equ 3           ; rnd & 3 = 0: πιτσίλισμα
 VY_MAX          equ 4           ; γραμμές/καρέ, τελική ταχύτητα πτώσης
+
+; HL στο πεδίο N της εγγραφής όπου δείχνει (αλλάζει το A).
+        macro FIELD n
+        ld a,l
+        and #F0
+        or {n}
+        ld l,a
+        mend
 
 ; Ανά καρέ της μετάγγισης, μετά το part_draw. out: Z = τελείωσε.
 particles_frame:
@@ -45,7 +56,7 @@ particles_frame:
         or a
         ret
 
-; HL = particles + A * P_SIZE
+; HL = particles + A * P_SIZE. Αλλάζει DE.
 part_ptr:
         ld l,a
         ld h,0
@@ -58,50 +69,71 @@ part_ptr:
         ret
 
 part_clear:
-        ld hl,particles
-        ld de,particles+1
-        ld bc,MAX_PART*P_SIZE-1
-        ld (hl),0
-        ldir
         xor a
         ld (p_alive),a
         ld (dlist_n),a          ; καμία λίστα
         ld (plist_n),a
         ld hl,dlist_a
         ld (dlist),hl
-        ld (dlist_end),hl
         ld hl,dlist_b
         ld (plist),hl
         ld (plist_end),hl
         ret
 
 ;------------------------------------------------------------------
-part_erase:
-        ld a,(dlist_n)
+; XOR της λίστας HL (A εγγραφές) στην οθόνη: με DI, το SP διαβάζει τη λίστα.
+; Ο μετρητής στο B' (το BC' του firmware φυλάγεται: το χρειάζεται στο disc.asm).
+xor_list:
         or a
         ret z
+        di
+        ld (sp_save),sp
+        ld sp,hl
+        exx
+        ld (bc_save),bc
         ld b,a
-        xor a
-        ld (dlist_n),a
-        ld hl,(dlist_end)
-.p:     dec hl
-        ld c,(hl)               ; byte της γραμμής y+1
-        dec hl
-        ld a,(hl)               ; byte της γραμμής y
-        dec hl
-        dec hl
-        dec hl
-        ld d,(hl)
-        dec hl
-        ld e,(hl)
+        exx
+.p:     pop de                  ; διεύθυνση (y ζυγό: η y+1 είναι +#800)
+        pop bc                  ; C = XOR
+        ld a,(de)
+        xor c
         ld (de),a
         ld a,d
         add a,8
         ld d,a
-        ld a,c
+        ld a,(de)
+        xor c
         ld (de),a
-        djnz .p
+        exx
+        dec b
+        exx
+        jr nz,.p
+        exx
+        ld bc,(bc_save)
+        exx
+        ld sp,(sp_save)
+        ei
         ret
+
+part_erase:
+        ld a,(dlist_n)
+        ld hl,(dlist)
+        call xor_list
+        xor a
+        ld (dlist_n),a
+        ret
+
+; Σχεδιάζει τη λίστα του plist, που γίνεται η dlist (για το επόμενο σβήσιμο).
+part_draw:
+        ld hl,(plist)
+        ld (dlist),hl
+        ld a,(plist_n)
+        ld (dlist_n),a
+        ld b,a
+        xor a
+        ld (plist_n),a          ; τίποτα εκκρεμές ως την επόμενη φυσική
+        ld a,b
+        jp xor_list
 
 ; Οι γραμμές υγρού στην οθόνη φτάνουν τις src_lines / dst_lines.
 liquid_sync:
@@ -139,55 +171,67 @@ part_emit:
         ld a,h
         or l
         ret z
+        ld a,(p_alive)          ; γεμάτο: περιμένει το επόμενο καρέ
+        cp MAX_PART
+        ret nc
         dec hl
         ld (emit_left),hl
-        ld ix,particles
-        ld b,MAX_PART
-        ld de,P_SIZE
-.find:  ld a,(ix+P_ST)
-        or a
-        jr z,.got
-        add ix,de
-        djnz .find
-        jr .drain               ; όλα πιασμένα: χάνεται, το τέλος διορθώνει τη στάθμη
-.got:   ld (ix+P_ST),1
-        ld hl,p_alive
-        inc (hl)
-        ld hl,(emit_x)
-        ld (ix+P_X),l
-        ld (ix+P_X+1),h
-        ld hl,(emit_y)
-        ld (ix+P_Y),l
-        ld (ix+P_Y+1),h
-        call rnd                ; vx = base_vx ± 32
-        and 63
-        sub 32
-        ld e,a
-        rla
-        sbc a,a
-        ld d,a
-        ld hl,(base_vx)
-        add hl,de
-        ld (ix+P_VX),l
-        ld (ix+P_VX+1),h
+        inc a
+        ld (p_alive),a
+        dec a
+        call part_ptr
+        push bc
+        ld (hl),1               ; πτήση
+        inc l
+        ex de,hl                ; DE -> P_VY (το rnd αλλάζει HL)
         call rnd                ; vy = base_vy ± 16
         and 31
         sub 16
-        ld e,a
+        ld c,a
         rla
         sbc a,a
-        ld d,a
+        ld b,a
         ld hl,(base_vy)
-        add hl,de
-        ld (ix+P_VY),l
-        ld (ix+P_VY+1),h
+        add hl,bc
+        ex de,hl
+        ld (hl),e
+        inc l
+        ld (hl),d
+        inc l
+        ld de,(emit_y)
+        ld (hl),e
+        inc l
+        ld (hl),d
+        inc l
+        ex de,hl                ; DE -> P_VX
+        call rnd                ; vx = base_vx ± 32
+        and 63
+        sub 32
+        ld c,a
+        rla
+        sbc a,a
+        ld b,a
+        ld hl,(base_vx)
+        add hl,bc
+        ex de,hl
+        ld (hl),e
+        inc l
+        ld (hl),d
+        inc l
+        ld de,(emit_x)
+        ld (hl),e
+        inc l
+        ld (hl),d
+        pop bc
 .drain: ld hl,src_acc           ; ανά PPL εκπομπές, μια γραμμή λιγότερη στο A
         inc (hl)
         ld a,(hl)
         cp PPL
         jr c,.next
         ld (hl),0
+        push bc
         call src_line_down
+        pop bc
 .next:  dec c
         jr nz,.emit
         ret
@@ -230,6 +274,9 @@ set_dst_surf:
         ret
 
 ;------------------------------------------------------------------
+; Φυσική όλων των ζωντανών, και η νέα λίστα σχεδίασης. Χωρίς IX: HL δείχνει
+; στην εγγραφή και προχωράει με inc l. Στο τέλος κάθε σωματιδίου B = x,
+; C = y (ακέραια).
 part_update:
         ld hl,(dlist)           ; η νέα λίστα στον άλλο buffer
         ld de,dlist_a
@@ -241,167 +288,262 @@ part_update:
         ld (plist_end),de
         xor a
         ld (plist_n),a
-        ld ix,particles
-        ld b,MAX_PART
         ld a,(p_alive)
         or a
         ret z
-        ld b,a
-.p:     push bc
-        ld l,(ix+P_VY)          ; vy += g, y += vy
-        ld h,(ix+P_VY+1)
-        ld de,GRAVITY
-        add hl,de
-        ld a,h                  ; τελική ταχύτητα: vy <= VY_MAX
+        ld (upd_left),a
+        ld hl,particles
+.p:     ld a,(hl)               ; P_ST
+        ld (cur_st),a
+        inc l
+        ld a,(hl)               ; vy += g, ως VY_MAX
+        add a,GRAVITY
+        ld e,a
+        inc l
+        ld a,(hl)
+        adc a,0
         cp VY_MAX
         jr c,.vy
-        bit 7,h
-        jr nz,.vy
-        ld hl,VY_MAX*256
-.vy:    ld (ix+P_VY),l
-        ld (ix+P_VY+1),h
-        ex de,hl
-        ld l,(ix+P_Y)
-        ld h,(ix+P_Y+1)
-        add hl,de
-        ld (ix+P_Y),l
-        ld (ix+P_Y+1),h
-        ld a,(ix+P_ST)          ; σε πτήση, κάτω από τη ζώνη: κατακόρυφα
+        cp #80
+        jr nc,.vy               ; αρνητικό: ανεβαίνει
+        ld a,VY_MAX
+        ld e,0
+.vy:    ld (hl),a
+        ld d,a
+        ld (cur_vyh),a
+        dec l
+        ld (hl),e
+        inc l
+        inc l                   ; P_Y
+        ld a,(hl)               ; y += vy
+        add a,e
+        ld (hl),a
+        inc l
+        ld a,(hl)
+        adc a,d
+        ld (hl),a
+        ld c,a                  ; C = y
+        inc l                   ; P_VX
+        ld e,(hl)
+        inc l
+        ld d,(hl)
+        inc l                   ; P_X
+        ld a,(cur_st)           ; σε πτήση, κάτω από τη ζώνη: κατακόρυφα
         dec a
         jr nz,.xmove
-        ld a,h
+        ld a,c
         cp 240
         jr nc,.xmove            ; πάνω από την οθόνη
-        ld hl,clear_y
-        cp (hl)
+        ld a,(clear_y)
+        ld b,a
+        ld a,c
+        cp b
         jr c,.xmove
-        ld h,(ix+P_X+1)
+        inc l
+        ld b,(hl)
         jr .xdone
-.xmove: ld e,(ix+P_VX)          ; x += vx
-        ld d,(ix+P_VX+1)
-        ld l,(ix+P_X)
-        ld h,(ix+P_X+1)
-        add hl,de
-        ld (ix+P_X),l
-        ld (ix+P_X+1),h
-.xdone:
-        ld a,(ix+P_ST)
+.xmove: ld a,(hl)               ; x += vx
+        add a,e
+        ld (hl),a
+        inc l
+        ld a,(hl)
+        adc a,d
+        ld (hl),a
+        ld b,a                  ; B = x
+.xdone: ld a,(cur_st)
         dec a
         jr nz,.inside
 
         ; πτήση
-        ld a,h
+        ld a,b
         cp 160
         jp nc,.kill             ; έξω αριστερά/δεξιά
-        ld a,(ix+P_Y+1)
+        ld a,c
         cp 240
-        jp nc,.done             ; αρνητικό y: πάνω από την οθόνη
+        jp nc,.next             ; αρνητικό y: πάνω από την οθόνη
         cp 200
         jp nc,.kill
-        bit 7,(ix+P_VY+1)
-        jp nz,.done             ; ανεβαίνει ακόμα
-        ld hl,dst_entry
-        cp (hl)
+        ld a,(cur_vyh)
+        rla
+        jp c,.done              ; ανεβαίνει ακόμα
+        ld a,(dst_entry)
+        ld d,a
+        ld a,c
+        cp d
         jp c,.done
-        ld (ix+P_ST),2          ; μπαίνει στο λαιμό του B
-        ld a,(ix+P_X+1)
-        ld hl,dst_nl
-        cp (hl)
-        jr nc,.nl
-        ld a,(hl)
-.nl:    ld hl,dst_nr
-        cp (hl)
-        jr c,.nr
-        ld a,(hl)
-.nr:    ld (ix+P_X+1),a
+        FIELD P_ST              ; μπαίνει στο λαιμό του B
+        ld (hl),2
+        ld a,(dst_nl)
+        cp b
+        jr c,.nl
+        ld b,a
+.nl:    ld a,(dst_nr)
+        cp b
+        jr nc,.nr
+        ld b,a
+.nr:    FIELD P_X+1
+        ld (hl),b
+        push hl
         call rnd                ; πέφτει σχεδόν ίσια: vx = ±16
+        pop hl
         and 31
         sub 16
-        ld (ix+P_VX),a
+        ld e,a
+        FIELD P_VX
+        ld (hl),e
+        inc l
+        ld a,e
         rla
         sbc a,a
-        ld (ix+P_VX+1),a
+        ld (hl),a
         jp .done
 
 .inside:
-        ld a,(ix+P_X+1)         ; τοίχοι: vx = -vx/2
-        ld hl,dst_xl
-        cp (hl)
+        ld a,(dst_xl)           ; τοίχοι: vx = -vx/2
+        ld d,a
+        ld a,b
+        cp d
         jr c,.wall
-        ld hl,dst_xr
-        cp (hl)
+        ld a,(dst_xr)
+        ld d,a
+        ld a,b
+        cp d
         jr z,.surf
         jr c,.surf
-.wall:  ld a,(hl)
-        ld (ix+P_X+1),a
-        ld l,(ix+P_VX)
-        ld h,(ix+P_VX+1)
-        sra h
-        rr l
+.wall:  ld b,d
+        ld (hl),b               ; (HL -> P_X+1)
+        FIELD P_VX
+        ld e,(hl)
+        inc l
+        ld d,(hl)
+        sra d
+        rr e
         xor a
-        sub l
-        ld l,a
+        sub e
+        ld e,a
         sbc a,a
-        sub h
-        ld (ix+P_VX),l
-        ld (ix+P_VX+1),a
-.surf:  ld a,(ix+P_Y+1)
+        sub d
+        ld (hl),a
+        dec l
+        ld (hl),e
+.surf:  ld a,(dst_surf)
+        ld d,a
+        ld a,c
         and #FE
-        ld hl,dst_surf
-        cp (hl)
+        cp d
         jr c,.done
-        ld a,(ix+P_ST)          ; στην επιφάνεια
+        ld a,(cur_st)           ; στην επιφάνεια
         cp 2
         jr nz,.absorb
+        push hl
         call rnd
+        pop hl
         and SPLASH_MASK
         jr nz,.absorb
-        ld (ix+P_ST),3          ; πιτσίλισμα: vy = -vy/4, πλάγια ταχύτητα
-        ld l,(ix+P_VY)
-        ld h,(ix+P_VY+1)
-        sra h
-        rr l
-        sra h
-        rr l
+        FIELD P_ST              ; πιτσίλισμα: vy = -vy/4, πλάγια ταχύτητα
+        ld (hl),3
+        inc l
+        ld e,(hl)
+        inc l
+        ld d,(hl)
+        sra d
+        rr e
+        sra d
+        rr e
         xor a
-        sub l
-        ld l,a
+        sub e
+        ld e,a
         sbc a,a
-        sub h
-        ld (ix+P_VY),l
-        ld (ix+P_VY+1),a
+        sub d
+        ld (hl),a
+        dec l
+        ld (hl),e
+        inc l
+        inc l
+        inc l                   ; P_Y+1
         ld a,(dst_surf)
         sub 2
-        ld (ix+P_Y+1),a
+        ld (hl),a
+        ld c,a
+        push hl
         call rnd
+        pop hl
         and 127
         sub 64
-        ld (ix+P_VX),a
+        inc l                   ; P_VX
+        ld (hl),a
+        inc l
         rla
         sbc a,a
-        ld (ix+P_VX+1),a
+        ld (hl),a
         jr .done
 .absorb:
+        push hl
         call absorb
-.kill:  ld hl,p_alive           ; το τελευταίο (ακόμα όχι ενημερωμένο) στη θέση του
-        dec (hl)
-        ld a,(hl)
-        pop bc
-        dec b
+        pop hl
+.kill:  FIELD P_ST              ; το τελευταίο (ακόμα όχι ενημερωμένο) στη θέση του
+        ld a,(p_alive)
+        dec a
+        ld (p_alive),a
+        ld e,a
+        ld a,(upd_left)
+        dec a
+        ld (upd_left),a
         ret z
-        push bc
+        push hl
+        ld a,e
         call part_ptr
-        push ix
         pop de
+        push de
         ld bc,P_SIZE
         ldir
-        pop bc
+        pop hl
         jp .p
-.done:  call plist_add
-        pop bc
-.next:  ld de,P_SIZE
-        add ix,de
-        dec b
+.done:  ld a,b                  ; στη λίστα σχεδίασης, αν είναι στην οθόνη
+        cp 160
+        jr nc,.next
+        ld a,c
+        cp 198
+        jr nc,.next
+        push hl
+        and #FE                 ; ζυγό y: η y+1 είναι +#800
+        ld l,a
+        ld h,hi(line_lo)
+        ld e,(hl)
+        inc h
+        ld d,(hl)
+        ld a,b
+        srl a
+        add a,e
+        ld e,a
+        adc a,d
+        sub e
+        ld d,a
+        ld hl,(plist_end)
+        ld (hl),e
+        inc hl
+        ld (hl),d
+        inc hl
+        ld a,(pour_pl)          ; ζυγό x: αριστερό pixel
+        bit 0,b
+        jr z,.pen
+        ld a,(pour_pr)
+.pen:   ld (hl),a
+        inc hl
+        inc hl
+        ld (plist_end),hl
+        ld hl,plist_n
+        inc (hl)
+        pop hl
+.next:  ld a,l                  ; επόμενη εγγραφή
+        and #F0
+        add a,P_SIZE
+        ld l,a
+        jr nc,.nc
+        inc h
+.nc:    ld a,(upd_left)
+        dec a
+        ld (upd_left),a
         jp nz,.p
         ret
 
@@ -419,93 +561,3 @@ absorb:
         ld (dst_acc),a
         call dst_line_up
         jr .line
-
-;------------------------------------------------------------------
-; Προσθέτει το σωματίδιο IX στη λίστα σχεδίασης (αν είναι στην οθόνη).
-plist_add:
-        ld a,(ix+P_X+1)
-        cp 160
-        ret nc
-        ld c,a
-        ld a,(ix+P_Y+1)
-        cp 198
-        ret nc
-        and #FE                 ; ζυγό y: η y+1 είναι +#800
-        ld l,a
-        ld h,hi(line_lo)
-        ld e,(hl)
-        inc h
-        ld d,(hl)
-        ld a,c
-        srl a
-        add a,e
-        ld e,a
-        adc a,d
-        sub e
-        ld d,a
-        ld hl,(plist_end)
-        ld (hl),e
-        inc hl
-        ld (hl),d
-        inc hl
-        bit 0,c
-        jr nz,.right
-        ld (hl),#55             ; ζυγό x: αριστερό pixel
-        inc hl
-        ld a,(pour_pl)
-        jr .pen
-.right: ld (hl),#AA
-        inc hl
-        ld a,(pour_pr)
-.pen:   ld (hl),a
-        inc hl
-        inc hl
-        inc hl
-        ld (plist_end),hl
-        ld hl,plist_n
-        inc (hl)
-        ret
-
-; Σχεδιάζει τη λίστα του plist, που γίνεται η dlist (για το επόμενο σβήσιμο).
-part_draw:
-        ld a,(plist_n)
-        ld (dlist_n),a
-        or a
-        ret z
-        ld b,a
-        xor a
-        ld (plist_n),a          ; τίποτα εκκρεμές ως την επόμενη φυσική
-        ld hl,(plist_end)
-        ld (dlist_end),hl
-        ld hl,(plist)
-        ld (dlist),hl
-.p:     ld e,(hl)
-        inc hl
-        ld d,(hl)
-        inc hl
-        ld c,(hl)               ; μάσκα
-        inc hl
-        ld a,(de)
-        inc hl
-        ld (hl),a               ; save y
-        and c
-        dec hl
-        or (hl)                 ; pen
-        ld (de),a
-        ld a,d
-        add a,8
-        ld d,a
-        ld a,(de)
-        inc hl
-        inc hl
-        ld (hl),a               ; save y+1
-        and c
-        dec hl
-        dec hl
-        or (hl)
-        ld (de),a
-        inc hl
-        inc hl
-        inc hl
-        djnz .p
-        ret

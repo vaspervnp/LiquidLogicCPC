@@ -31,9 +31,10 @@ for i in range(27):
     lv = (0, 128, 255)
     FW_RGB.append((lv[(i // 3) % 3], lv[i // 9], lv[i % 3]))
 
-# Pens (plan.md, §4): 0 φόντο, 1 γυαλί, 2 λάμψη/κείμενο, 3 κρυμμένη στρώση,
+# Pens (plan.md, §4): 0 φόντο, 1 γυαλί, 2 λάμψη/κείμενο, 3 κρυμμένη στρώση
+# (κυανό: το μπλε είναι ζώνη του φόντου),
 # 4-15 τα 12 υγρά.
-PALETTE = [0, 13, 26, 1,
+PALETTE = [0, 13, 26, 10,
            6, 15, 24, 18, 9, 20, 2, 7, 8, 16, 3, 12]
 PEN_BG, PEN_GLASS, PEN_WHITE, PEN_HIDDEN = 0, 1, 2, 3
 PEN_LIQUID = 4
@@ -81,6 +82,7 @@ BOTTLE_BOTTOM = [
     "................",     # 69
 ]
 BOTTLE_W, BOTTLE_H = 16, 70
+TILT_PX = 4                 # γέρσιμο: μετατόπιση του χείλους σε pixels
 BODY_TOP, BODY_LINES = 6, 60
 
 CHARS = {".": PEN_BG, "#": PEN_GLASS, "o": PEN_WHITE, "-": PEN_GLASS}
@@ -255,6 +257,17 @@ def make_gfx():
         "",
     ]
     lines += db_lines("bottle_gfx", encode(bottle_pixels()), "μπουκάλι, 8 bytes x 70 γραμμές")
+    lines.append("")
+    odd = [[PEN_BG] + row + [PEN_BG] for row in bottle_pixels()]
+    lines += db_lines("bottle_gfx_odd", encode(odd),
+                      "το ίδιο, 1 pixel δεξιά (για το γέρσιμο): 9 bytes x 70 γραμμές")
+    lines.append("")
+    # γέρσιμο: μετατόπιση (pixels) ανά γραμμή, 4 στο χείλος ως 0 στον πάτο
+    tilt = [round((BOTTLE_H - 1 - r) * TILT_PX / (BOTTLE_H - 1)) for r in range(BOTTLE_H)]
+    lines.append("; γέρσιμο: μετατόπιση σε pixels ανά γραμμή του μπουκαλιού")
+    lines.append("tilt_table:")
+    for i in range(0, BOTTLE_H, 14):
+        lines.append("        db " + ",".join(str(x) for x in tilt[i:i + 14]))
     lines.append("")
     m = {".": PEN_BG, "o": PEN_WHITE, "c": PEN_CORK}
     lines += db_lines("cursor_gfx", encode(art(CURSOR, m)), "κέρσορας 4 x 6")
