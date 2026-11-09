@@ -1,4 +1,5 @@
-; bottles.asm — μπουκάλια: διάταξη στην οθόνη, σχεδίαση, γραμμές υγρού
+; bottles.asm — μπουκάλια: διάταξη στην οθόνη, σχεδίαση, γραμμές υγρού,
+; σημάνσεις των ειδικών τύπων (κρυμμένες, πάγος, λουκέτο, κουρτίνα, σταγονόμετρο)
 
 ; Εγγραφή μπουκαλιού (BOT_SIZE bytes, στο bottles)
 B_X             equ 0           ; στήλη (byte)
@@ -10,9 +11,23 @@ B_RAISE         equ 5           ; 0 ή RAISE_H όταν είναι επιλεγ�
 B_DONE          equ 6           ; 1 = ολοκληρωμένο (ένα χρώμα, γεμάτο)
 B_ROW           equ 7           ; 0 / 1
 B_LAY           equ 8           ; στρώσεις από κάτω: pen, bit 7 = κρυμμένη
-BOT_SIZE        equ 16
+B_FLAGS         equ 14          ; BF_*
+B_FREEZE        equ 15          ; κινήσεις ως το ξεπάγωμα (0 = όχι πάγος)
+B_LOCK          equ 16          ; pen του λουκέτου (0 = όχι)
+BOT_SIZE        equ 24
 MAX_BOTTLES     equ 14
 MAX_CAP         equ 6
+
+BF_CAP          equ 7           ; bflags της πίστας: χωρητικότητα (0 = της πίστας)
+BF_DROPPER      equ 8           ; μία στρώση τη φορά
+BF_CURTAIN      equ 16          ; κρυμμένο ως την πρώτη μετάγγιση
+BFB_DROPPER     equ 3
+BFB_CURTAIN     equ 4
+
+LF_HIDDEN       equ 1           ; flags της πίστας
+LF_MOVES        equ 2
+LF_TIMER        equ 4
+LF_EXTRA        equ 8
 
 ROW_Y1          equ 28          ; δύο σειρές
 ROW_Y2          equ 118
@@ -21,6 +36,8 @@ ROW_MAX         equ 5
 BOTTLE_PITCH    equ 11          ; bytes
 RAISE_H         equ 8
 CURSOR_DY       equ BOTTLE_H+2  ; ο κέρσορας κάτω από το μπουκάλι
+CURTAIN_PEN     equ 11          ; μωβ ρίγες με γκρι
+LOCK_DY         equ BODY_TOP+24
 
 ; IX = μπουκάλι A. Αλλάζει DE.
 bottle_ix:
@@ -30,7 +47,10 @@ bottle_ix:
         add hl,hl
         add hl,hl
         add hl,hl
+        ld d,h
+        ld e,l
         add hl,hl
+        add hl,de               ; x 24
         ld de,bottles
         add hl,de
         push hl
@@ -38,18 +58,21 @@ bottle_ix:
         pop hl
         ret
 
+; A = πρώτη γραμμή του μπουκαλιού IX στην οθόνη.
+bottle_top:
+        ld a,(ix+B_Y)
+        sub (ix+B_RAISE)
+        ret
+
 ; Φορτώνει μια πίστα (plan.md §6, assets/data/levels.asm). in: HL =
 ;   header:   db flags, μπουκάλια, χωρητικότητα, κινήσεις, χρονόμετρο, par
 ;   μπουκάλι: db bflags, freeze, lock, πλήθος, pens από κάτω...
-; Μοιράζει τα μπουκάλια σε σειρές και τα κεντράρει. Τα bflags/freeze/lock
-; και οι ειδικοί τύποι είναι για το M3.
 level_setup:
         ld de,level_flags
         ldi
         ld a,(hl)
         inc hl
         ld (nbottles),a
-        ld b,a
         ld a,(hl)
         inc hl
         ld (level_cap),a
@@ -59,8 +82,69 @@ level_setup:
         ldi
         ld a,(nbottles)
         ld b,a
-        ld a,b                  ; μπουκάλια ανά σειρά
-        cp ROW_MAX+1
+        ld ix,bottles
+.bot:   push bc
+        ld a,(hl)               ; bflags
+        inc hl
+        ld c,a
+        and #FF-BF_CAP
+        ld (ix+B_FLAGS),a
+        ld a,c
+        and BF_CAP
+        jr nz,.cap
+        ld a,(level_cap)
+.cap:   call bottle_init
+        ld a,(hl)
+        inc hl
+        ld (ix+B_FREEZE),a
+        ld a,(hl)
+        inc hl
+        ld (ix+B_LOCK),a
+        ld a,(hl)               ; στρώσεις
+        inc hl
+        ld (ix+B_CNT),a
+        or a
+        jr z,.empty
+        ld b,a
+        push ix
+.lay:   ld a,(hl)
+        inc hl
+        ld (ix+B_LAY),a
+        inc ix
+        djnz .lay
+        pop ix
+.empty: call check_done
+        ld de,BOT_SIZE
+        add ix,de
+        pop bc
+        djnz .bot
+        jp layout
+
+; Άδειο μπουκάλι IX χωρητικότητας A (χωρίς θέση· layout).
+bottle_init:
+        ld (ix+B_CAP),a
+        push bc
+        ld c,a                  ; B_LH = BODY_LINES / cap
+        ld a,BODY_LINES
+        ld b,-1
+.div:   inc b
+        sub c
+        jr nc,.div
+        ld (ix+B_LH),b
+        pop bc
+        xor a
+        ld (ix+B_RAISE),a
+        ld (ix+B_DONE),a
+        ld (ix+B_CNT),a
+        ld (ix+B_FREEZE),a
+        ld (ix+B_LOCK),a
+        ret
+
+; Μοιράζει τα nbottles μπουκάλια σε σειρές και τα κεντράρει (B_X, B_Y, B_ROW).
+layout:
+        ld a,(nbottles)
+        ld b,a
+        cp ROW_MAX+1            ; μπουκάλια ανά σειρά
         jr c,.one
         inc a
         srl a                   ; (n+1)/2 στην επάνω σειρά
@@ -87,23 +171,17 @@ level_setup:
 .row:   ld a,(tmp_row)
         ld e,a
         ld d,0
-        push hl
         ld hl,row_len
         add hl,de
         ld b,(hl)               ; μπουκάλια στη σειρά
-        pop hl
+        push bc
         ld c,0                  ; x0 = (80 - (n*PITCH - 3)) / 2
 .mul:   ld a,c
         add a,BOTTLE_PITCH
         ld c,a
         djnz .mul
-        ld a,(tmp_row)
-        ld e,a
-        push hl
-        ld hl,row_len
-        add hl,de
-        ld b,(hl)
-        pop hl
+        pop de
+        ld b,d
         ld a,80+3
         sub c
         srl a
@@ -135,47 +213,16 @@ level_setup:
         ld a,ROW_Y1
         jr z,.y
         ld a,ROW_Y2
-.y:     ld (tmp_y),a
-.bot:   ld (ix+B_X),c
-        ld a,(tmp_y)
-        ld (ix+B_Y),a
+.y:     ld e,a
         ld a,(tmp_row)
-        ld (ix+B_ROW),a
-        ld a,(level_cap)
-        ld (ix+B_CAP),a
-        push bc
-        ld c,a                  ; B_LH = BODY_LINES / cap
-        ld a,BODY_LINES
-        ld b,-1
-.div:   inc b
-        sub c
-        jr nc,.div
-        ld (ix+B_LH),b
-        pop bc
-        xor a
-        ld (ix+B_RAISE),a
-        ld (ix+B_DONE),a
-        inc hl                  ; bflags, freeze, lock (M3)
-        inc hl
-        inc hl
-        ld a,(hl)               ; στρώσεις
-        inc hl
-        ld (ix+B_CNT),a
-        or a
-        jr z,.empty
-        push bc
-        ld b,a
-        push ix
-.lay:   ld a,(hl)
-        inc hl
-        ld (ix+B_LAY),a
-        inc ix
-        djnz .lay
-        pop ix
-        pop bc
-.empty: call check_done
+        ld d,a
+.bot:   ld (ix+B_X),c
+        ld (ix+B_Y),e
+        ld (ix+B_ROW),d
+        push de
         ld de,BOT_SIZE
         add ix,de
+        pop de
         ld a,c
         add a,BOTTLE_PITCH
         ld c,a
@@ -189,7 +236,8 @@ level_setup:
         jp nz,.row
         ret
 
-; B_DONE = 1 αν το μπουκάλι είναι γεμάτο με ένα χρώμα. IX = μπουκάλι.
+; B_DONE = 1 αν το μπουκάλι είναι γεμάτο με ένα χρώμα (και οι κρυμμένες του
+; στρώσεις αποκαλύπτονται). IX = μπουκάλι.
 check_done:
         ld (ix+B_DONE),0
         ld a,(ix+B_CNT)
@@ -199,14 +247,22 @@ check_done:
         push ix
         ld b,a
         ld a,(ix+B_LAY)
-.cmp:   cp (ix+B_LAY)
+        and #7F
+        ld c,a
+.cmp:   ld a,(ix+B_LAY)
+        and #7F
+        cp c
         jr nz,.no
         inc ix
         djnz .cmp
         pop ix
+        push ix
+        ld b,(ix+B_CNT)
+.show:  res 7,(ix+B_LAY)        ; ολοκληρωμένο: όλο ορατό
+        inc ix
+        djnz .show
+        pop ix
         pop bc
-        bit 7,a                 ; κρυμμένες δεν μετράνε
-        ret nz
         ld (ix+B_DONE),1
         ret
 .no:    pop ix
@@ -259,10 +315,9 @@ liquid_row:
         pop bc
         ret
 
-; Ολόκληρο μπουκάλι (γυαλί, υγρό, φελλός). IX = μπουκάλι.
+; Ολόκληρο μπουκάλι (γυαλί, υγρό, σημάνσεις, φελλός). IX = μπουκάλι.
 draw_bottle:
-        ld a,(ix+B_Y)
-        sub (ix+B_RAISE)
+        call bottle_top
         ld c,(ix+B_X)
         call scr_addr
         ex de,hl
@@ -271,7 +326,7 @@ draw_bottle:
         call draw_sprite
         ld a,(ix+B_CNT)
         or a
-        ret z
+        jr z,draw_marks
         xor a
         ld (row_n),a
         push ix
@@ -296,20 +351,230 @@ draw_bottle:
         pop hl
         pop bc
         djnz .lay
+
+; Κουρτίνα ή «?», πάγος, λουκέτο, φελλός ή βολβός. IX = μπουκάλι.
+draw_marks:
+        bit BFB_CURTAIN,(ix+B_FLAGS)
+        call nz,draw_curtain
+        bit BFB_CURTAIN,(ix+B_FLAGS)
+        call z,draw_hidden_q
+        ld a,(ix+B_FREEZE)
+        or a
+        call nz,draw_ice
+        ld a,(ix+B_LOCK)
+        or a
+        call nz,draw_lock
+        ld a,(level_cap)
+        cp (ix+B_CAP)
+        call nz,draw_ticks
+        ld hl,cork_gfx
         ld a,(ix+B_DONE)
         or a
+        jr nz,.top
+        bit BFB_DROPPER,(ix+B_FLAGS)
         ret z
-        ; φελλός
-        ld a,(ix+B_Y)
-        sub (ix+B_RAISE)
+        ld hl,bulb_gfx
+.top:   push hl                 ; φελλός / βολβός στο λαιμό
+        call bottle_top
         ld c,(ix+B_X)
         inc c
         inc c
         call scr_addr
         ex de,hl
-        ld hl,cork_gfx
+        pop hl
         ld bc,CORK_H*256+CORK_W
         jp draw_sprite
+
+; Άλλη χωρητικότητα από της πίστας: λευκές εγκοπές και στους δύο τοίχους
+; (γυαλί, που δεν το αγγίζει το υγρό), στα όρια των στρώσεων.
+draw_ticks:
+        ld b,(ix+B_CAP)
+        dec b
+        ret z
+        call bottle_top
+        add a,BODY_BOTTOM+1
+.tick:  sub (ix+B_LH)
+        push af
+        push bc
+        ld c,(ix+B_X)
+        call scr_addr
+        ld de,BOTTLE_W-1
+        ld c,2                  ; 2 γραμμές (μία αν αλλάζει σειρά χαρακτήρων)
+.line:  ld a,PB_WHITE           ; byte 0 και byte 7: τοίχος + έξω pixel, λευκά
+        ld (hl),a
+        add hl,de
+        ld (hl),a
+        sbc hl,de               ; (το add δεν άφησε carry)
+        ld a,h
+        add a,8
+        jr c,.done
+        ld h,a
+        dec c
+        jr nz,.line
+.done:  pop bc
+        pop af
+        djnz .tick
+        ret
+
+; Κουρτίνα: κάθετες ρίγες σε όλο το σώμα.
+draw_curtain:
+        ld a,(pen_left+CURTAIN_PEN)
+        ld e,a
+        ld a,(pen_right+PEN_GLASS)
+        or e
+        ld e,a
+        call bottle_top
+        add a,BODY_TOP
+        ld c,(ix+B_X)
+        inc c
+        call scr_addr
+        ld b,BODY_LINES
+.ln:    push hl
+        ld (hl),e
+        inc hl
+        ld (hl),e
+        inc hl
+        ld (hl),e
+        inc hl
+        ld (hl),e
+        inc hl
+        ld (hl),e
+        inc hl
+        ld (hl),e
+        pop hl
+        NEXT_LINE
+        djnz .ln
+        ret
+
+; «?» στη μέση κάθε κρυμμένης στρώσης.
+draw_hidden_q:
+        ld a,(ix+B_CNT)
+        or a
+        ret z
+        ld b,a
+        push ix
+        pop hl
+        ld de,B_LAY
+        add hl,de               ; HL -> στρώσεις
+        ld a,(ix+B_LH)
+        srl a
+        add a,2
+        ld d,a
+        call bottle_top
+        add a,BODY_BOTTOM
+        sub d
+        ld c,a                  ; C = y του «?» στη στρώση 0
+.lay:   bit 7,(hl)
+        jr z,.next
+        push bc
+        push hl
+        ld a,c
+        ld c,(ix+B_X)
+        inc c
+        inc c
+        inc c
+        call scr_addr
+        ex de,hl
+        ld hl,hidden_q_gfx
+        ld bc,5*256+2
+        call draw_sprite
+        pop hl
+        pop bc
+.next:  inc hl
+        ld a,c
+        sub (ix+B_LH)
+        ld c,a
+        djnz .lay
+        ret
+
+; Πάγος: λευκές κουκκίδες κάθε 3 γραμμές, σε εναλλασσόμενα bytes (σαν
+; κρύσταλλοι), και οι κινήσεις ως το ξεπάγωμα στη μέση.
+draw_ice:
+        call bottle_top
+        add a,BODY_TOP+1
+        ld c,(ix+B_X)
+        inc c
+        call scr_addr
+        ld b,BODY_LINES/3
+        ld d,0                  ; 0/1: ζυγά ή μονά bytes
+.ln:    push hl
+        ld a,d
+        or a
+        jr z,.even
+        inc hl
+.even:  ld e,3
+.byte:  ld a,(hl)
+        and #55
+        or PL_WHITE
+        ld (hl),a
+        inc hl
+        inc hl
+        dec e
+        jr nz,.byte
+        pop hl
+        ld a,d
+        xor 1
+        ld d,a
+        NEXT_LINE
+        NEXT_LINE
+        NEXT_LINE
+        djnz .ln
+        ld a,(ix+B_FREEZE)
+        call num_str
+        ld hl,num_buf+1
+        ld c,(ix+B_X)
+        inc c
+        inc c
+        ld a,(ix+B_FREEZE)
+        cp 10
+        jr nc,.two
+        inc hl
+        inc c
+.two:   call bottle_top
+        add a,BODY_TOP+25
+        ld b,a
+        ld a,PEN_WHITE
+        jp print_str
+
+; Λουκέτο στο χρώμα B_LOCK (A).
+draw_lock:
+        ld e,a
+        ld d,0
+        ld hl,pen_both
+        add hl,de
+        ld a,(hl)
+        ld (tmp_pen),a
+        call bottle_top
+        add a,LOCK_DY
+        ld c,(ix+B_X)
+        inc c
+        inc c
+        call scr_addr
+        ex de,hl
+        ld hl,lock_gfx
+        ld b,LOCK_H
+.ln:    push de
+        ld c,LOCK_W
+.byte:  push bc
+        ld a,(tmp_pen)
+        ld b,a
+        ld c,(hl)               ; λευκό
+        inc hl
+        ld a,(hl)               ; μάσκα χρώματος
+        inc hl
+        and b
+        or c
+        ld (de),a
+        inc de
+        pop bc
+        dec c
+        jr nz,.byte
+        pop de
+        ex de,hl
+        NEXT_LINE
+        ex de,hl
+        djnz .ln
+        ret
 
 ; Σβήνει και ξανασχεδιάζει (για σήκωμα / κατέβασμα). IX = μπουκάλι.
 redraw_bottle:

@@ -47,6 +47,7 @@ main_loop:
         call wait_vsync
         call part_erase
         call liquid_sync
+        call timer_tick
         call part_draw
         call read_input
         call game_frame
@@ -69,6 +70,7 @@ keymap:         ds 10
 input:          db 0
 input_new:      db 0
 txt_pen:        db 0
+tmp_pen:        db 0
 row_n:          db 0
 tmp_row:        db 0
 tmp_y:          db 0
@@ -80,7 +82,14 @@ level:          db 0            ; πίστα (από 0)
 moves:          db 0
 undo_left:      db 0
 undo_sp:        db 0
-undo_stack:     ds UNDO_DEPTH*3
+undo_stack:     ds UNDO_MAX*SNAP_SIZE
+extra_used:     db 0
+key_e_prev:     db 0
+hud_msg:        db 0            ; 1 = μήνυμα στη θέση του HUD
+timer_on:       db 0
+time_up:        db 0
+time_frames:    db 0
+time_left:      dw 0            ; δευτερόλεπτα
 num_buf:        ds 4
 level_flags:    db 0            ; header της πίστας (level_setup)
 level_moves:    db 0            ; με αυτή τη σειρά

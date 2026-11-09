@@ -1,14 +1,18 @@
 ; game.asm — η λογική του παιχνιδιού: πίστες, επιλογή πηγής/στόχου,
-; μετάγγιση, κινήσεις, undo, restart, αδιέξοδο, νίκη
+; μετάγγιση, κινήσεις, undo, restart, αδιέξοδο, νίκη, ειδικοί τύποι
+; (πάγος, λουκέτο, όριο κινήσεων, χρονόμετρο, έξτρα μπουκάλι)
 
 ST_IDLE         equ 0           ; κέρσορας
 ST_SEL          equ 1           ; πηγή επιλεγμένη (σηκωμένη)
 ST_POUR         equ 2           ; ο πίδακας τρέχει
 ST_WIN          equ 3
+ST_FAIL         equ 4           ; τέλος χρόνου: μόνο R / SPACE
 
 UNDO_MAX        equ 5           ; undo ανά πίστα
-UNDO_DEPTH      equ 32          ; κινήσεις που θυμάται
+SNAP_SIZE       equ MAX_BOTTLES*BOT_SIZE+1      ; στιγμιότυπο: μπουκάλια + κινήσεις
 HUD_Y           equ 3
+KEY_E_LINE      equ 7           ; E: γραμμή 7, bit 2 του πληκτρολογίου
+KEY_E_BIT       equ 4
 
 game_start:
         xor a
@@ -31,29 +35,76 @@ level_start:
         ld (undo_sp),a
         ld (cursor),a
         ld (state),a
+        ld (extra_used),a
+        ld (time_up),a
+        ld (timer_on),a
         ld a,UNDO_MAX
         ld (undo_left),a
+        ld a,(level_timer)      ; χρονόμετρο: header x 4 δευτερόλεπτα
+        or a
+        jr z,.notime
+        ld l,a
+        ld h,0
+        add hl,hl
+        add hl,hl
+        ld (time_left),hl
+        ld a,50
+        ld (time_frames),a
+        ld (timer_on),a
+.notime:
         call draw_all_bottles
         call hud_draw
         xor a
         jp cursor_draw
 
 game_frame:
+        ld a,(time_up)          ; τέλος χρόνου (αφού τελειώσει η μετάγγιση)
+        or a
+        jr z,.state
         ld a,(state)
+        cp ST_POUR
+        jr z,.state
+        xor a
+        ld (time_up),a
+        ld (timer_on),a
+        ld a,(state)
+        or a
+        call nz,deselect
+        ld a,ST_FAIL
+        ld (state),a
+        ld hl,str_timeup
+        ld a,PEN_LIQUID
+        jp hud_message
+.state: ld a,(state)
         cp ST_POUR
         jp z,.pour
         cp ST_WIN
         jp z,.win
+        cp ST_FAIL
+        jp z,.fail
         ld a,(input_new)
         and IN_RESTART
         jp nz,level_start
         ld a,(input_new)
         and IN_UNDO
-        jr z,.move
+        jr z,.extra
         ld a,(state)
         or a
         call nz,deselect
         jp do_undo
+.extra: ld a,(keymap+KEY_E_LINE) ; E: έξτρα μπουκάλι
+        cpl
+        and KEY_E_BIT
+        ld hl,key_e_prev
+        ld b,(hl)
+        ld (hl),a
+        jr z,.move
+        cp b
+        jr z,.move
+        ld a,(state)
+        or a
+        call nz,deselect
+        jp extra_bottle
 .move:  ld a,(input_new)
         and IN_LEFT|IN_RIGHT|IN_UP|IN_DOWN
         call nz,move_cursor
@@ -75,8 +126,9 @@ game_frame:
         ld a,(ix+B_CNT)
         or a
         ret z
-        ld a,(ix+B_DONE)
-        or a
+        ld a,(ix+B_DONE)        ; ολοκληρωμένο, παγωμένο, κλειδωμένο: όχι
+        or (ix+B_FREEZE)
+        or (ix+B_LOCK)
         ret nz
         ld a,(cursor)
         ld (sel_src),a
@@ -93,7 +145,6 @@ game_frame:
         ld (sel_dst),a
         call try_pour
         jp c,deselect
-        call push_undo
         ld hl,moves             ; ως 255
         ld a,(hl)
         inc a
@@ -106,20 +157,39 @@ game_frame:
 .pour:  call particles_frame
         ret nz
         call pour_finish
+        call after_move
         xor a
         ld (state),a
         call check_win
-        jr nz,.stuck
+        jr nz,.limit
+        ld (timer_on),a         ; A = 0
         ld a,ST_WIN
         ld (state),a
         ld hl,str_win
         ld a,PEN_LIQUID+2
         jp hud_message
+.limit: ld a,(level_moves)      ; όριο κινήσεων
+        or a
+        jr z,.stuck
+        ld hl,moves
+        cp (hl)
+        jr z,.out
+        jr nc,.stuck
+.out:   ld hl,str_nomoves
+        ld a,PEN_LIQUID
+        jp hud_message
 .stuck: call check_stuck
         ret nz
         ld hl,str_stuck
-        ld a,PEN_LIQUID
+        call extra_allowed
+        jr nz,.msg
+        ld hl,str_stuck_e
+.msg:   ld a,PEN_LIQUID
         jp hud_message
+.fail:  ld a,(input_new)
+        and IN_RESTART|IN_FIRE
+        ret z
+        jp level_start
 .win:   ld a,(input_new)
         and IN_RESTART
         jp nz,level_start
@@ -134,43 +204,84 @@ game_frame:
 .next:  ld (level),a
         jp level_start
 
+; Μετά από κάθε μετάγγιση (τα σωματίδια έχουν σβηστεί): ξεκλείδωμα όσων
+; περιμένουν το χρώμα που μόλις ολοκληρώθηκε, και ο πάγος μετράει μία κίνηση.
+after_move:
+        ld ix,(pour_dst)
+        ld a,(ix+B_DONE)
+        or a
+        ld c,0
+        jr z,.scan
+        ld a,(ix+B_LAY)
+        and #7F
+        ld c,a                  ; C = χρώμα που ολοκληρώθηκε
+.scan:  ld a,(nbottles)
+        ld b,a
+        ld ix,bottles
+.bot:   push bc
+        ld e,0                  ; E = χρειάζεται ξανασχεδίαση
+        ld a,c
+        or a
+        jr z,.ice
+        cp (ix+B_LOCK)
+        jr nz,.ice
+        ld (ix+B_LOCK),0
+        inc e
+.ice:   ld a,(ix+B_FREEZE)
+        or a
+        jr z,.draw
+        dec (ix+B_FREEZE)
+        inc e
+.draw:  ld a,e
+        or a
+        call nz,redraw_bottle
+        ld de,BOT_SIZE
+        add ix,de
+        pop bc
+        djnz .bot
+        ret
+
 ;------------------------------------------------------------------
-; Undo: κάθε μετάγγιση γράφεται ως (πηγή, στόχος, στρώσεις).
+; Undo: πριν από κάθε μετάγγιση (try_pour) ένα στιγμιότυπο όλων των
+; μπουκαλιών και των κινήσεων· έτσι αναιρούνται και πάγος, λουκέτα,
+; αποκαλύψεις και κουρτίνες. Κρατάει τα UNDO_MAX τελευταία.
 push_undo:
+        push ix
+        push iy
         ld a,(undo_sp)
-        cp UNDO_DEPTH
+        cp UNDO_MAX
         jr c,.room
-        ld hl,undo_stack+3      ; γεμάτο: χάνεται η παλαιότερη
+        ld hl,undo_stack+SNAP_SIZE      ; γεμάτο: χάνεται το παλαιότερο
         ld de,undo_stack
-        ld bc,(UNDO_DEPTH-1)*3
+        ld bc,(UNDO_MAX-1)*SNAP_SIZE
         ldir
-        ld a,UNDO_DEPTH-1
-.room:  ld e,a
+        ld a,UNDO_MAX-1
+.room:  ld c,a
         inc a
         ld (undo_sp),a
-        call undo_ptr
-        ld a,(sel_src)
-        ld (hl),a
-        inc hl
-        ld a,(sel_dst)
-        ld (hl),a
-        inc hl
-        ld a,(pour_n)
-        ld (hl),a
+        ld a,c
+        call snap_ptr
+        ex de,hl
+        ld hl,bottles
+        ld bc,MAX_BOTTLES*BOT_SIZE
+        ldir
+        ld a,(moves)
+        ld (de),a
+        pop iy
+        pop ix
         ret
 
-; HL = undo_stack + E*3
-undo_ptr:
-        ld l,e
-        ld h,0
-        ld d,h
-        add hl,hl
-        add hl,de
-        ld de,undo_stack
-        add hl,de
+; HL = undo_stack + A * SNAP_SIZE
+snap_ptr:
+        ld hl,undo_stack
+        or a
+        ret z
+        ld b,a
+        ld de,SNAP_SIZE
+.add:   add hl,de
+        djnz .add
         ret
 
-; Αναιρεί την τελευταία μετάγγιση, χωρίς πίδακα.
 do_undo:
         ld a,(undo_left)
         or a
@@ -180,59 +291,105 @@ do_undo:
         ret z
         dec a
         ld (undo_sp),a
-        ld e,a
-        call undo_ptr
+        call snap_ptr
+        ld de,bottles
+        ld bc,MAX_BOTTLES*BOT_SIZE
+        ldir
         ld a,(hl)
-        ld (sel_src),a
-        inc hl
-        ld a,(hl)
-        ld (sel_dst),a
-        inc hl
-        ld b,(hl)               ; στρώσεις
-        call bottle_ix          ; A = στόχος
-        push ix
-        pop iy
-        ld a,(sel_src)
-        call bottle_ix
-.layer: ld a,(iy+B_CNT)         ; κορυφή του στόχου -> πίσω στην πηγή
-        dec a
-        ld (iy+B_CNT),a
-        add a,B_LAY
-        ld e,a
-        ld d,0
-        push iy
-        pop hl
-        add hl,de
-        ld c,(hl)
-        ld a,(ix+B_CNT)
-        add a,B_LAY
-        ld e,a
-        push ix
-        pop hl
-        add hl,de
-        ld (hl),c
-        inc (ix+B_CNT)
-        djnz .layer
-        call check_done
-        call redraw_bottle
-        push iy
-        pop ix
-        call check_done
-        call redraw_bottle
+        ld (moves),a
         ld hl,undo_left
         dec (hl)
-        ld hl,moves
-        ld a,(hl)
-        or a
-        jr z,hud_draw
-        dec (hl)
-        jr hud_draw
+        ld a,(nbottles)         ; κανένα σηκωμένο
+        ld b,a
+        ld ix,bottles
+        ld de,BOT_SIZE
+.low:   ld (ix+B_RAISE),0
+        add ix,de
+        djnz .low
+        jp redraw_all
+
+; Ολόκληρη η οθόνη από την αρχή.
+redraw_all:
+        call cls
+        call draw_all_bottles
+        call hud_draw
+        ld a,(cursor)
+        jp cursor_draw
 
 ;------------------------------------------------------------------
-; HUD: πίστα, κινήσεις, undo που απομένουν.
+; NZ = το E επιτρέπεται σε αυτή την πίστα και δεν έχει χρησιμοποιηθεί.
+extra_allowed:
+        ld a,(level_flags)
+        and LF_EXTRA
+        ret z
+        ld a,(extra_used)
+        xor 1
+        ret
+
+; Ένα άδειο μπουκάλι παραπάνω (μία φορά ανά πίστα). Οι θέσεις αλλάζουν,
+; οπότε τα στιγμιότυπα του undo δεν ισχύουν πια.
+extra_bottle:
+        call extra_allowed
+        ret z
+        ld a,(nbottles)
+        cp MAX_BOTTLES
+        ret nc
+        ld a,1
+        ld (extra_used),a
+        ld a,(nbottles)
+        push af
+        inc a
+        ld (nbottles),a
+        pop af
+        call bottle_ix
+        ld a,(level_cap)
+        call bottle_init
+        ld (ix+B_FLAGS),0
+        call layout
+        xor a
+        ld (undo_sp),a
+        jp redraw_all
+
+;------------------------------------------------------------------
+; Χρονόμετρο: μέσα στο παράθυρο μετά το VSYNC (main.asm), όπου επιτρέπεται
+; να γράφεται το HUD ενώ τρέχει πίδακας.
+timer_tick:
+        ld a,(timer_on)
+        or a
+        ret z
+        ld hl,time_frames
+        dec (hl)
+        ret nz
+        ld (hl),50
+        ld hl,(time_left)
+        ld a,h
+        or l
+        ret z
+        dec hl
+        ld (time_left),hl
+        ld a,h
+        or l
+        jr nz,.show
+        ld a,1
+        ld (time_up),a
+.show:  ld a,(hud_msg)
+        or a
+        ret nz
+hud_time:
+        ld hl,(time_left)
+        call num16_str
+        ld hl,num_buf
+        ld bc,HUD_Y*256+60
+        ld a,PEN_LIQUID+2
+        jp print_str
+
+;------------------------------------------------------------------
+; HUD: πίστα, κινήσεις (ή όσες μένουν), undo, χρόνος, E+.
 hud_draw:
+        xor a
+        ld (hud_msg),a
         call hud_clear
-        ld hl,str_level
+        ld hl,str_lv
         ld bc,HUD_Y*256+1
         ld a,PEN_WHITE
         call print_str
@@ -240,28 +397,58 @@ hud_draw:
         inc a
         call num_str
         ld hl,num_buf+1
-        ld bc,HUD_Y*256+13
+        ld bc,HUD_Y*256+6
         ld a,PEN_LIQUID+2
         call print_str
-        ld hl,str_moves
-        ld bc,HUD_Y*256+28
+        ld a,(level_moves)
+        or a
+        jr z,.moves
+        ld hl,str_left          ; όριο: όσες μένουν
+        ld bc,HUD_Y*256+14
+        ld a,PEN_WHITE
+        call print_str
+        ld a,(moves)
+        ld b,a
+        ld a,(level_moves)
+        sub b
+        jr nc,.left
+        xor a
+.left:  call num_str
+        ld bc,HUD_Y*256+24
+        jr .mnum
+.moves: ld hl,str_moves
+        ld bc,HUD_Y*256+14
         ld a,PEN_WHITE
         call print_str
         ld a,(moves)
         call num_str
-        ld hl,num_buf
-        ld bc,HUD_Y*256+40
+        ld bc,HUD_Y*256+26
+.mnum:  ld hl,num_buf
         ld a,PEN_LIQUID+2
         call print_str
         ld hl,str_undo
-        ld bc,HUD_Y*256+58
+        ld bc,HUD_Y*256+34
         ld a,PEN_WHITE
         call print_str
         ld a,(undo_left)
         call num_str
         ld hl,num_buf+2
-        ld bc,HUD_Y*256+68
+        ld bc,HUD_Y*256+44
         ld a,PEN_LIQUID+2
+        call print_str
+        ld a,(level_timer)
+        or a
+        jr z,.extra
+        ld hl,str_time
+        ld bc,HUD_Y*256+50
+        ld a,PEN_WHITE
+        call print_str
+        call hud_time
+.extra: call extra_allowed
+        ret z
+        ld hl,str_extra
+        ld bc,HUD_Y*256+74
+        ld a,PEN_LIQUID+5       ; κυανό
         jp print_str
 
 hud_clear:
@@ -274,6 +461,8 @@ hud_clear:
 ; Μήνυμα στη θέση του HUD, στο κέντρο. HL = κείμενο, A = pen.
 hud_message:
         push af
+        ld a,1
+        ld (hud_msg),a
         push hl
         call hud_clear
         pop hl
@@ -295,27 +484,34 @@ hud_message:
 
 ; num_buf = A σε 3 ψηφία.
 num_str:
-        ld hl,num_buf
-        ld c,100
+        ld l,a
+        ld h,0
+; num_buf = HL (ως 999) σε 3 ψηφία.
+num16_str:
+        ld de,num_buf
+        ld bc,-100
         call .digit
-        ld c,10
+        ld bc,-10
         call .digit
+        ld a,l
         add a,"0"
-        ld (hl),a
-        inc hl
-        ld (hl),0
+        ld (de),a
+        inc de
+        xor a
+        ld (de),a
         ret
-.digit: ld b,"0"-1
-.sub:   inc b
-        sub c
-        jr nc,.sub
-        add a,c
-        ld (hl),b
-        inc hl
+.digit: ld a,"0"-1
+.sub:   inc a
+        add hl,bc
+        jr c,.sub
+        sbc hl,bc
+        ld (de),a
+        inc de
         ret
 
 ;------------------------------------------------------------------
-; out: Z = καμία έγκυρη μετάγγιση (αδιέξοδο).
+; out: Z = καμία έγκυρη μετάγγιση (αδιέξοδο). Παγωμένα και κλειδωμένα δεν
+; μετράνε ούτε ως πηγή ούτε ως στόχος.
 check_stuck:
         ld a,(nbottles)
         ld b,a
@@ -324,7 +520,8 @@ check_stuck:
         or a
         jr z,.nsrc
         ld a,(ix+B_DONE)
-        or a
+        or (ix+B_FREEZE)
+        or (ix+B_LOCK)
         jr nz,.nsrc
         call top_layer
         ld c,(hl)               ; C = χρώμα της κορυφής
@@ -339,6 +536,9 @@ check_stuck:
         or a
         sbc hl,de
         jr z,.ndst              ; το ίδιο μπουκάλι
+        ld a,(iy+B_FREEZE)
+        or (iy+B_LOCK)
+        jr nz,.ndst
         ld a,(iy+B_CNT)
         cp (iy+B_CAP)
         jr z,.ndst              ; γεμάτο
@@ -464,8 +664,14 @@ row_info:
         pop hl
         ret
 
-str_level:      db "LEVEL",0
+str_lv:         db "LV",0
 str_moves:      db "MOVES",0
+str_left:       db "LEFT",0
 str_undo:       db "UNDO",0
+str_time:       db "TIME",0
+str_extra:      db "E+",0
 str_win:        db "LEVEL CLEAR! SPACE",0
 str_stuck:      db "NO MOVES! U UNDO  R RESTART",0
+str_stuck_e:    db "NO MOVES! E EXTRA BOTTLE",0
+str_nomoves:    db "OUT OF MOVES! U UNDO  R RESTART",0
+str_timeup:     db "TIME UP! R RESTART",0

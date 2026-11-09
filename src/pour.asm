@@ -26,12 +26,22 @@ try_pour:
         call bottle_ix
         ld (pour_src),ix
         ld iy,(pour_dst)
-        ; κανόνες (plan.md §1)
-        ld a,(ix+B_CNT)
+        ; κανόνες (plan.md §1, §3)
+        ld a,(level_moves)      ; όριο κινήσεων
+        or a
+        jr z,.nolim
+        ld hl,moves
+        cp (hl)
+        jp z,.fail
+        jp c,.fail
+.nolim: ld a,(ix+B_CNT)
         or a
         jp z,.fail
         ld a,(iy+B_DONE)
         or a
+        jp nz,.fail
+        ld a,(iy+B_FREEZE)      ; παγωμένος / κλειδωμένος στόχος
+        or (iy+B_LOCK)
         jp nz,.fail
         ld a,(iy+B_CAP)
         sub (iy+B_CNT)
@@ -61,12 +71,23 @@ try_pour:
         inc c
         dec hl
         djnz .run
-.rund:  ld a,(pour_space)       ; n = min(run, χώρος)
+.rund:  bit BFB_DROPPER,(ix+B_FLAGS)
+        jr z,.drop
+        ld c,1                  ; σταγονόμετρο: μία στρώση τη φορά
+.drop:  ld a,(pour_space)       ; n = min(run, χώρος)
         cp c
         jr nc,.n
         ld c,a
 .n:     ld a,c
         ld (pour_n),a
+
+        call push_undo          ; η κατάσταση πριν από τη μετάγγιση
+        call uncurtain          ; η κουρτίνα φεύγει από πηγή και στόχο
+        push ix
+        push iy
+        pop ix
+        call uncurtain
+        pop ix
 
         ; γραμμές οθόνης πριν
         ld a,(ix+B_CNT)
@@ -96,6 +117,12 @@ try_pour:
         inc (iy+B_CNT)
         dec (ix+B_CNT)
         djnz .move
+        ld a,(ix+B_CNT)         ; η νέα κορυφή της πηγής αποκαλύπτεται (φαίνεται
+        or a                    ; όταν ξανασχεδιαστεί, στο pour_finish)
+        jr z,.reveal
+        call top_layer
+        res 7,(hl)
+.reveal:
 
         ; γραμμές οθόνης μετά
         ld a,(ix+B_CNT)
@@ -265,6 +292,13 @@ try_pour:
         ret
 .fail:  scf
         ret
+
+; Βγάζει την κουρτίνα του IX (και το ξανασχεδιάζει).
+uncurtain:
+        bit BFB_CURTAIN,(ix+B_FLAGS)
+        ret z
+        res BFB_CURTAIN,(ix+B_FLAGS)
+        jp redraw_bottle
 
 ; Τέλος: όσες γραμμές δεν έφτασαν (σωματίδια που χάθηκαν), κατέβασμα του A,
 ; φελλός στο B αν ολοκληρώθηκε.

@@ -124,6 +124,31 @@ HIDDEN_Q = [
     "..o.",
 ]
 
+# Λουκέτο (μπουκάλι κλειδωμένο με χρώμα), 8 x 11, αδιαφανές: o λευκό,
+# c το χρώμα του λουκέτου (ο κώδικας το βάφει), . μαύρο.
+LOCK = [
+    "..oooo..",
+    ".o....o.",
+    ".o....o.",
+    ".o....o.",
+    "oooooooo",
+    "occcccco",
+    "occ..cco",
+    "occ..cco",
+    "occcccco",
+    "occcccco",
+    "oooooooo",
+]
+
+# Βολβός του σταγονόμετρου, στη θέση του φελλού (γρ. 0-4, bytes 2-5).
+BULB = [
+    "..oooo..",
+    ".oooooo.",
+    ".oooooo.",
+    "..oooo..",
+    "...oo...",
+]
+
 # Font 3x5 (στήλη 4 = κενό), κάθε γραμμή του διπλασιάζεται -> 4 x 10.
 FONT = {
     " ": ["...", "...", "...", "...", "..."],
@@ -167,10 +192,11 @@ FONT = {
     "-": ["...", "...", "###", "...", "..."],
     "/": ["..#", "..#", ".#.", "#..", "#.."],
     "!": [".#.", ".#.", ".#.", "...", ".#."],
+    "+": ["...", ".#.", "###", ".#.", "..."],
     "?": ["##.", "..#", ".#.", "...", ".#."],
     ".": ["...", "...", "...", "...", ".#."],
 }
-FONT_ORDER = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ:-/!?."
+FONT_ORDER = " 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ:-/!?.+"
 
 
 def art(rows, mapping):
@@ -205,6 +231,10 @@ def make_gfx():
         f"CURSOR_H        equ {len(CURSOR)}",
         f"CORK_W          equ {len(CORK[0]) // 2}",
         f"CORK_H          equ {len(CORK)}",
+        f"LOCK_W          equ {len(LOCK[0]) // 2}",
+        f"LOCK_H          equ {len(LOCK)}",
+        f"PL_WHITE        equ #{pen_left(PEN_WHITE):02X}",
+        f"PB_WHITE        equ #{pen_left(PEN_WHITE) | pen_right(PEN_WHITE):02X}",
         f"FONT_CHARS      equ {len(FONT_ORDER)}",
         f"PR_GLASS        equ #{pen_right(PEN_GLASS):02X}         ; pen_right[γυαλί]: λάμψη στο άδειο",
         f"PL_GLASS        equ #{pen_left(PEN_GLASS):02X}",
@@ -232,6 +262,14 @@ def make_gfx():
     lines.append("")
     q = encode(art(HIDDEN_Q, {".": PEN_HIDDEN, "o": PEN_WHITE}))
     lines += db_lines("hidden_q_gfx", q, "«?» κρυμμένης στρώσης 2 x 5")
+    lines.append("")
+    lines += db_lines("bulb_gfx", encode(art(BULB, m)), "βολβός σταγονόμετρου 4 x 5")
+    lines.append("")
+    # λουκέτο: μάσκα λευκού (έτοιμη) και μάσκα χρώματος, ανά byte εναλλάξ
+    white = encode(art(LOCK, {".": 0, "o": PEN_WHITE, "c": 0}))
+    fill = encode(art(LOCK, {".": 0, "o": 0, "c": 15}))
+    lines += db_lines("lock_gfx", [[x for pair in zip(w, f) for x in pair] for w, f in zip(white, fill)],
+                      "λουκέτο 4 x 11: ανά byte (λευκό, μάσκα χρώματος)")
     lines.append("")
     # Font: μάσκες (pen 15 = όλα τα bits του pixel), 2 bytes x 5 γραμμές.
     lines.append("; font 3x5: ανά χαρακτήρα 5 γραμμές x 2 bytes μάσκα (AND με pen_both)")
