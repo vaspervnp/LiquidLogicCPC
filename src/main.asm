@@ -5,8 +5,8 @@
 ; σαν πίδακας σωματιδίων με βαρύτητα (particles.asm). ESC = ακύρωση,
 ; U = undo, R = η πίστα από την αρχή.
 ;
-; Memory map (RAM config C0, firmware εκτός, DI):
-;   #0000-#003F  vectors (EI:RET στο #38, για ασφάλεια)
+; Memory map (RAM config C0, firmware εκτός· interrupts μόνο για τον ήχο):
+;   #0000-#003F  vectors (IM 1: JP int_handler στο #38, ο ήχος)
 ;   #0100-#03FF  particles, MAX_PART x P_SIZE
 ;   #0500-#06FF  line_lo, line_hi: διευθύνσεις των 200 γραμμών
 ;   #0700-#08FF  δύο λίστες σχεδίασης των particles, MAX_PART x L_SIZE
@@ -30,19 +30,23 @@ start:
         di
         ld sp,STACK_TOP
         im 1
-        ld hl,#C9FB             ; EI : RET
-        ld (#38),hl
+        ld a,#C3                ; JP int_handler στο #38 (sound.asm)
+        ld (#38),a
+        ld hl,int_handler
+        ld (#39),hl
         ld bc,#7F00+GA_RAM_C0
         out (c),c
         ld bc,#7F00+GA_MODE0
         out (c),c
         call set_palette
         call make_line_table
+        call sound_init
         ld a,r                  ; seed (≠ 0)
         or 1
         ld (rnd_seed),a
         ld a,1                  ; πρόοδος: ξεκλείδωτη μόνο η 1η πίστα
         ld (unlocked),a
+        ei                      ; από εδώ ο ήχος παίζει από το interrupt
         call title_start
 
 ; Μετά το VSYNC η δέσμη χρειάζεται ~4,6 ms ως την πρώτη γραμμή της εικόνας:
@@ -64,8 +68,10 @@ main_loop:
         include "pour.asm"
         include "game.asm"
         include "ui.asm"
+        include "sound.asm"
         include "gfx.asm"
         include "physics.asm"
+        include "sound_data.asm"
 
 ;------------------------------------------------------------------
 ; Μεταβλητές
@@ -84,6 +90,15 @@ tmp_x0:         db 0
 tmp_ys:         db 0
 tmp_t:          db 0
 
+sfx_ptr:        dw 0            ; ήχος (sound.asm)
+sfx_vol:        db 0
+plip_per:       dw 0
+plip_vol:       db 0
+music_on:       db 0
+snd_frame:      db 0
+int_idx:        db 0            ; interrupt μετά το VSYNC (0-5)
+mus_a:          ds MC_SIZE      ; μελωδία, και αμέσως μετά
+mus_c:          ds MC_SIZE      ; το μπάσο
 mode:           db 0            ; MODE_*: τίτλος, επιλογή, παιχνίδι
 sel_level:      db 0
 unlocked:       db 1            ; πόσες πίστες παίζονται

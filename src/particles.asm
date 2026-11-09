@@ -214,6 +214,10 @@ dst_line_up:
         ret nc
         ld hl,dst_lines
         inc (hl)
+        ld a,(hl)
+        push bc
+        call pour_plip          ; γουργουρητό
+        pop bc
 ; dst_surf = η πρώτη άδεια γραμμή του B - 1: εκεί ακουμπάει το σωματίδιο
 ; (που πιάνει τις γραμμές y, y+1).
 set_dst_surf:

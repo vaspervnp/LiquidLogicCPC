@@ -37,6 +37,7 @@ level_load:
         ret
 
 level_start:
+        call music_stop
         call cls
         call level_load
         ld hl,level_buf
@@ -83,6 +84,8 @@ game_frame:
         call nz,deselect
         ld a,ST_FAIL
         ld (state),a
+        ld hl,sfx_timeup
+        call play_sfx
         ld hl,str_timeup
         ld a,PEN_LIQUID
         jp hud_message
@@ -149,6 +152,8 @@ game_frame:
         ld (sel_src),a
         ld (ix+B_RAISE),RAISE_H
         call redraw_bottle
+        ld hl,sfx_select
+        call play_sfx
         ld a,ST_SEL
         ld (state),a
         ret
@@ -159,7 +164,7 @@ game_frame:
         jp z,deselect
         ld (sel_dst),a
         call try_pour
-        jp c,deselect
+        jp c,.bad
         ld hl,moves             ; ως 255
         ld a,(hl)
         inc a
@@ -169,6 +174,9 @@ game_frame:
         ld a,ST_POUR
         ld (state),a
         ret
+.bad:   call deselect           ; άκυρη: ακύρωση και βουητό
+        ld hl,sfx_error
+        jp play_sfx
 .pour:  call particles_frame
         ret nz
         call pour_finish
@@ -180,6 +188,8 @@ game_frame:
         ld (timer_on),a         ; A = 0
         ld a,ST_WIN
         ld (state),a
+        ld hl,sfx_win
+        call play_sfx
         jp win_message
 .limit: ld a,(level_moves)      ; όριο κινήσεων
         or a
@@ -188,11 +198,15 @@ game_frame:
         cp (hl)
         jr z,.out
         jr nc,.stuck
-.out:   ld hl,str_nomoves
+.out:   ld hl,sfx_timeup
+        call play_sfx
+        ld hl,str_nomoves
         ld a,PEN_LIQUID
         jp hud_message
 .stuck: call check_stuck
         ret nz
+        ld hl,sfx_error
+        call play_sfx
         ld hl,str_stuck
         call extra_allowed
         jr nz,.msg
@@ -292,7 +306,9 @@ after_move:
         ld a,(ix+B_LAY)
         and #7F
         ld c,a                  ; C = χρώμα που ολοκληρώθηκε
-.scan:  ld a,(nbottles)
+.scan:  xor a
+        ld (tmp_row),a          ; 1 = κάτι ξεκλείδωσε / ξεπάγωσε
+        ld a,(nbottles)
         ld b,a
         ld ix,bottles
 .bot:   push bc
@@ -303,12 +319,17 @@ after_move:
         cp (ix+B_LOCK)
         jr nz,.ice
         ld (ix+B_LOCK),0
+        ld a,1
+        ld (tmp_row),a
         inc e
 .ice:   ld a,(ix+B_FREEZE)
         or a
         jr z,.draw
-        dec (ix+B_FREEZE)
         inc e
+        dec (ix+B_FREEZE)
+        jr nz,.draw
+        ld a,1                  ; ξεπάγωσε
+        ld (tmp_row),a
 .draw:  ld a,e
         or a
         call nz,redraw_bottle
@@ -316,7 +337,11 @@ after_move:
         add ix,de
         pop bc
         djnz .bot
-        ret
+        ld a,(tmp_row)
+        or a
+        ret z
+        ld hl,sfx_chime
+        jp play_sfx
 
 ;------------------------------------------------------------------
 ; Undo: πριν από κάθε μετάγγιση (try_pour) ένα στιγμιότυπο όλων των
@@ -376,6 +401,8 @@ do_undo:
         ld (moves),a
         ld hl,undo_left
         dec (hl)
+        ld hl,sfx_undo
+        call play_sfx
         ld a,(nbottles)         ; κανένα σηκωμένο
         ld b,a
         ld ix,bottles
@@ -425,6 +452,8 @@ extra_bottle:
         call layout
         xor a
         ld (undo_sp),a
+        ld hl,sfx_extra
+        call play_sfx
         jp redraw_all
 
 ;------------------------------------------------------------------
@@ -649,6 +678,8 @@ check_stuck:
         ret
 
 deselect:
+        ld hl,sfx_cancel
+        call play_sfx
         ld a,(sel_src)
         call bottle_ix
         ld (ix+B_RAISE),0

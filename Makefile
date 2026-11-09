@@ -4,6 +4,7 @@
 #   make assets     ξαναπαράγει τα assets/data (γραφικά, πίνακες, πίστες)
 #   make shot       headless emulator (~/cpcemu) -> build/screenshot.png
 #   make test       headless: λύνει πίστες με τα πλήκτρα, undo -> build/test_*.png
+#   make sound      headless: οι registers του AY -> build/sound_*.wav
 #   make clean
 
 RASM     ?= rasm
@@ -15,9 +16,9 @@ DSK      := $(BUILD)/LiquidLogic.dsk
 LOADER   := $(BUILD)/disc.bas
 
 SRC      := $(wildcard src/*.asm)
-DATA     := assets/data/gfx.asm assets/data/physics.asm assets/data/levels.asm
+DATA     := assets/data/gfx.asm assets/data/physics.asm assets/data/levels.asm assets/data/sound_data.asm
 
-.PHONY: all assets shot test clean
+.PHONY: all assets shot test sound clean
 
 all: $(DSK)
 
@@ -36,11 +37,15 @@ $(DSK): $(SRC) $(DATA) Makefile
 assets/data/gfx.asm assets/data/physics.asm: assets/src/make_gfx.py
 	$(PYTHON) assets/src/make_gfx.py
 
+assets/data/sound_data.asm: assets/src/make_sound.py
+	$(PYTHON) assets/src/make_sound.py
+
 assets/data/levels.asm: tools/levels.py   # (και levels.json, για τα tests)
 	$(PYTHON) tools/levels.py
 
 assets:
 	$(PYTHON) assets/src/make_gfx.py
+	$(PYTHON) assets/src/make_sound.py
 	$(PYTHON) tools/levels.py
 
 shot: $(DSK)
@@ -48,6 +53,9 @@ shot: $(DSK)
 
 test: $(DSK)
 	$(PYTHON) tools/headless.py test
+
+sound: $(DSK)
+	$(PYTHON) tools/sound_wav.py
 
 clean:
 	rm -rf $(BUILD)

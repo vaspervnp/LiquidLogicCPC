@@ -23,6 +23,7 @@ mode_frame:
 title_start:
         xor a
         ld (mode),a
+        call music_start
         call cls
         ld hl,title_bottles
         call level_setup
@@ -46,6 +47,8 @@ title_frame:
         ld a,(input_new)
         and IN_FIRE
         ret z
+        ld hl,sfx_select
+        call play_sfx
         jp select_start
 
 ; Πέντε ολοκληρωμένα μπουκάλια (μορφή πίστας, levels.asm).
@@ -149,6 +152,7 @@ big_pens:       db 13,4,5,6,7   ; ροζ, κόκκινο, πορτοκαλί, κ
 select_start:
         ld a,MODE_SELECT
         ld (mode),a
+        call music_start
         call cls
         ld hl,str_select
         ld bc,2*256+28
@@ -176,8 +180,11 @@ select_frame:
         ld a,(sel_level)        ; μόνο ξεκλείδωτες
         ld hl,unlocked
         cp (hl)
-        ret nc
+        ld hl,sfx_error
+        jp nc,play_sfx
         ld (level),a
+        ld hl,sfx_select
+        call play_sfx
         ld a,MODE_GAME
         ld (mode),a
         jp level_start
@@ -186,6 +193,8 @@ select_frame:
         ret z
         ld b,a
         push bc
+        ld hl,sfx_tick
+        call play_sfx
         ld a,(sel_level)        ; σβήσιμο του πλαισίου
         ld c,PEN_BG
         call cell_frame

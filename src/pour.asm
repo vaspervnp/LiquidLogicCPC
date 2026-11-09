@@ -317,6 +317,8 @@ pour_finish:
         ld a,(ix+B_DONE)
         or a
         ret z
+        ld hl,sfx_cork          ; φελλός
+        call play_sfx
         jp draw_bottle
 
 ;------------------------------------------------------------------

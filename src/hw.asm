@@ -35,8 +35,11 @@ wait_vsync:
         ret
 
 ;------------------------------------------------------------------
-; Πληκτρολόγιο: οι 10 γραμμές του matrix στο keymap (0 = πατημένο).
+; Πληκτρολόγιο: οι 10 γραμμές του matrix στο keymap (0 = πατημένο). Περνάει
+; από τον AY (reg 14, θύρα A του PPI σε είσοδο), οπότε με DI: ο ήχος του
+; interrupt (sound.asm) γράφει κι αυτός στον AY.
 read_keys:
+        di
         ld hl,keymap
         ld bc,#F40E             ; PSG: επιλογή reg 14
         out (c),c
@@ -60,6 +63,7 @@ read_keys:
         out (c),c
         ld bc,#F600             ; PSG: inactive
         out (c),c
+        ei
         ret
 
 ; Ενέργειες του παίκτη, ένα bit η καθεμία.

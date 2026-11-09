@@ -71,6 +71,7 @@ RUN"DISC
 make assets   # ξαναπαράγει γραφικά, πίνακες φυσικής και πίστες (assets/data)
 make shot     # headless emulator -> build/screenshot.png
 make test     # headless emulator: λύνει και τις 100 πίστες, ελέγχει κάθε ειδικό τύπο
+make sound    # headless emulator: μουσική τίτλου και πίστα 1 -> build/sound_*.wav
 make clean
 ```
 
