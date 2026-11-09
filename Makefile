@@ -21,13 +21,14 @@ DATA     := assets/data/gfx.asm assets/data/physics.asm assets/data/levels.asm
 
 all: $(DSK)
 
-# Το rasm γράφει το LIQUID.BIN σε νέα EDSK· το iDSK προσθέτει τον loader
-# (κρατώντας το Extended format) και ελέγχουμε το header στο τέλος.
+# Το rasm γράφει το LIQUID.BIN και το LEVELS.BIN σε νέα EDSK· το iDSK
+# προσθέτει τον loader (κρατώντας το Extended format) και ελέγχουμε το header
+# στο τέλος. Ο loader φορτώνει το LEVELS.BIN κατευθείαν στο bank 4.
 $(DSK): $(SRC) $(DATA) Makefile
 	@mkdir -p $(BUILD)
 	rm -f $@
 	$(RASM) -I src -I assets/data src/main.asm -o $(BUILD)/liquid -s -sq -os $(BUILD)/liquid.sym
-	printf '10 MODE 0:BORDER 0:RUN"LIQUID.BIN"\r\n' > $(LOADER)
+	printf '10 MEMORY &3FFF:MODE 0:BORDER 0:OUT &7F00,&C4:LOAD"LEVELS.BIN":OUT &7F00,&C0:RUN"LIQUID.BIN"\r\n' > $(LOADER)
 	$(IDSK) $@ -i $(LOADER) -t 0 > /dev/null 2>&1
 	@head -c 21 $@ | grep -q 'EXTENDED CPC DSK File' || { echo "$@: δεν είναι Extended DSK"; exit 1; }
 	@$(IDSK) $@ -l 2>/dev/null | grep -E '^[A-Z0-9 ]{8}\.'
@@ -35,7 +36,7 @@ $(DSK): $(SRC) $(DATA) Makefile
 assets/data/gfx.asm assets/data/physics.asm: assets/src/make_gfx.py
 	$(PYTHON) assets/src/make_gfx.py
 
-assets/data/levels.asm: tools/levels.py
+assets/data/levels.asm: tools/levels.py   # (και levels.json, για τα tests)
 	$(PYTHON) tools/levels.py
 
 assets:

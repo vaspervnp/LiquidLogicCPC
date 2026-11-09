@@ -52,7 +52,7 @@ def boot():
     c.run_frames(150)
     c.insert_disc(DSK)
     c.type_text('RUN"DISC\n')
-    c.run_frames(300)
+    c.run_frames(450)                   # LEVELS.BIN στο bank 4, μετά LIQUID.BIN
     return c
 
 
@@ -141,7 +141,8 @@ class Game:
         self.c.write_ram(self.sym["level"], bytes([index]))
         self.key(ord("R"))
         self.c.run_frames(25)           # όλη η οθόνη ξανασχεδιάζεται
-        self.check(self.peek("level") == index and self.peek("moves") == 0, f"φόρτωμα πίστας {index + 1}")
+        self.check(self.peek("level") == index and self.peek("moves") == 0 and self.peek("undo_left") == UNDO_MAX,
+                   f"φόρτωμα πίστας {index + 1}")
 
     def play(self, lv, name, upto=None):
         state = levels.state_of(lv)
@@ -182,7 +183,7 @@ def special_checks(g, lv, idx):
         g.play(lv, name, upto=1)
         g.check(g.bot(fz, B_FREEZE) == k - 1, f"{name}: ο πάγος δεν μέτρησε την κίνηση")
         g.key(ord("U"))
-        c.run_frames(3)
+        c.run_frames(20)                # το undo ξανασχεδιάζει όλη την οθόνη
         g.check(g.bot(fz, B_FREEZE) == k and g.peek("moves") == 0, f"{name}: undo δεν επανέφερε τον πάγο")
         g.load_level(idx)
     # λουκέτο: δεν επιλέγεται ως το χρώμα του
@@ -218,8 +219,9 @@ def special_checks(g, lv, idx):
         g.load_level(idx)
     # χρονόμετρο: στο 0 -> ST_FAIL
     if lv["timer"]:
-        g.check(g.c.read_ram(g.sym["time_left"], 2) == bytes([(lv["timer"] * 4) & 255, (lv["timer"] * 4) >> 8]),
-                f"{name}: αρχικός χρόνος")
+        tl = g.c.read_ram(g.sym["time_left"], 2)
+        tl = tl[0] | tl[1] << 8
+        g.check(tl == lv["timer"] * 4, f"{name}: αρχικός χρόνος {tl}, όχι {lv['timer'] * 4}")
         c.write_ram(g.sym["time_left"], bytes([2, 0]))
         c.run_frames(130)
         g.check(g.peek("state") == ST_FAIL, f"{name}: δεν έληξε ο χρόνος")
@@ -256,7 +258,7 @@ def test(only=None):
         g.pour(i, j, gif)
         gif[0].save(os.path.join(OUT, "pour.gif"), save_all=True, append_images=gif[1:], duration=20, loop=0)
         g.key(ord("U"))
-        c.run_frames(3)
+        c.run_frames(20)
         g.check(g.layers() == start and g.peek("undo_left") == UNDO_MAX - 1 and g.peek("moves") == 0, "undo")
         b = g.layers()
         bad = next(((a, d) for a in range(len(b)) for d in range(len(b))

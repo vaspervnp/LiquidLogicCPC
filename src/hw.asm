@@ -2,6 +2,7 @@
 
 GA_MODE0        equ #8C         ; gate array: mode 0, upper + lower ROM off
 GA_RAM_C0       equ #C0         ; RAM config 0: τα 64K της κύριας μνήμης
+GA_RAM_C4       equ #C4         ; RAM config 4: bank 4 στο #4000-#7FFF
 PPI_B           equ #F5         ; PPI port B: bit 0 = VSYNC
 
 ; Η παλέτα (palette_hw, gfx.asm) στα 16 pens, και border = pen 0.

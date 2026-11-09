@@ -9,16 +9,16 @@ ST_WIN          equ 3
 ST_FAIL         equ 4           ; τέλος χρόνου: μόνο R / SPACE
 
 UNDO_MAX        equ 5           ; undo ανά πίστα
+LEVEL_MAX       equ 6+MAX_BOTTLES*(4+MAX_CAP)   ; header + μπουκάλια
 SNAP_SIZE       equ MAX_BOTTLES*BOT_SIZE+1      ; στιγμιότυπο: μπουκάλια + κινήσεις
 HUD_Y           equ 3
 KEY_E_LINE      equ 7           ; E: γραμμή 7, bit 2 του πληκτρολογίου
 KEY_E_BIT       equ 4
 
-game_start:
-        xor a
-        ld (level),a
-level_start:
-        call cls
+; Αντιγράφει την πίστα (level) από το bank 4 στο level_buf.
+level_load:
+        ld bc,#7F00+GA_RAM_C4
+        out (c),c
         ld a,(level)
         add a,a
         ld l,a
@@ -29,6 +29,20 @@ level_start:
         inc hl
         ld h,(hl)
         ld l,a
+        ld de,level_buf
+        ld bc,LEVEL_MAX
+        ldir
+        ld bc,#7F00+GA_RAM_C0
+        out (c),c
+        ret
+
+game_start:
+        xor a
+        ld (level),a
+level_start:
+        call cls
+        call level_load
+        ld hl,level_buf
         call level_setup
         xor a
         ld (moves),a
@@ -395,9 +409,14 @@ hud_draw:
         call print_str
         ld a,(level)
         inc a
+        push af
         call num_str
-        ld hl,num_buf+1
-        ld bc,HUD_Y*256+6
+        pop af
+        ld hl,num_buf+1         ; 2 ψηφία, 3 από το 100
+        cp 100
+        jr c,.lv
+        dec hl
+.lv:    ld bc,HUD_Y*256+6
         ld a,PEN_LIQUID+2
         call print_str
         ld a,(level_moves)

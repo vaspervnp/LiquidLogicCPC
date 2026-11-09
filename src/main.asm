@@ -11,7 +11,9 @@
 ;   #0500-#06FF  line_lo, line_hi: διευθύνσεις των 200 γραμμών
 ;   #0700-#08FF  δύο λίστες σχεδίασης των particles, MAX_PART x L_SIZE
 ;   #0900-#0FFF  stack (από το #1000 προς τα κάτω)
-;   #1000-       κώδικας + δεδομένα
+;   #1000-#3FFF  κώδικας + δεδομένα
+;   #4000-#7FFF  παράθυρο του bank 4 (RAM config C4), μόνο στο level_load:
+;                οι 100 πίστες (LEVELS.BIN, το φορτώνει το DISC.BAS)
 ;   #C000-#FFFF  οθόνη
 
         org #1000
@@ -61,7 +63,6 @@ main_loop:
         include "game.asm"
         include "gfx.asm"
         include "physics.asm"
-        include "levels.asm"
 
 ;------------------------------------------------------------------
 ; Μεταβλητές
@@ -95,6 +96,7 @@ level_flags:    db 0            ; header της πίστας (level_setup)
 level_moves:    db 0            ; με αυτή τη σειρά
 level_timer:    db 0
 level_par:      db 0
+level_buf:      ds LEVEL_MAX        ; η τρέχουσα πίστα, από το bank 4
 
 nbottles:       db 0
 level_cap:      db 0
@@ -147,7 +149,7 @@ plist_end:      dw dlist_b
 plist_n:        db 0
 
 code_end:
-        assert code_end <= #A000, "code overflows BASIC HIMEM"
+        assert code_end <= #4000, "code overflows into the bank window"
         assert particles+MAX_PART*P_SIZE <= line_lo, "particles overlap line_lo"
         assert MAX_PART*L_SIZE <= 256, "draw list larger than a page"
         assert dlist_b+256 <= STACK_TOP-#600, "draw lists overlap the stack"
@@ -155,3 +157,16 @@ code_end:
 ; Το rasm γράφει το αρχείο κατευθείαν σε Extended DSK, με AMSDOS header
 ; (load = exec = #1000).
         save "LIQUID.BIN",#1000,code_end-#1000,DSK,"build/LiquidLogic.dsk"
+
+;------------------------------------------------------------------
+; Bank 4 (C4, στο #4000-#7FFF): οι πίστες. level_table πρώτο, στο #4000.
+;------------------------------------------------------------------
+
+        bank 4
+        org #4000
+levels_data:
+        include "levels.asm"
+levels_end:
+
+        assert levels_end <= #8000, "bank 4 is full"
+        save "LEVELS.BIN",levels_data,levels_end-levels_data,DSK,"build/LiquidLogic.dsk"
