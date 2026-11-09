@@ -20,7 +20,7 @@
 | Βελάκια / joystick | κέρσορας |
 | SPACE / fire | επιλογή πηγής, μετά στόχου |
 | ESC | ακύρωση επιλογής / παύση |
-| U | undo |
+| U | undo (5 ανά πίστα) |
 | R | restart πίστας |
 | E | έξτρα άδειο μπουκάλι |
 
@@ -52,8 +52,9 @@ RUN"DISC
 Άλλοι στόχοι:
 
 ```bash
-make assets   # ξαναπαράγει τα γραφικά (assets/data) από το assets/src
+make assets   # ξαναπαράγει γραφικά, πίνακες φυσικής και πίστες (assets/data)
 make shot     # headless emulator -> build/screenshot.png
+make test     # headless emulator: λύνει πίστες, undo, restart, αδιέξοδο
 make clean
 ```
 
@@ -63,7 +64,7 @@ make clean
 src/          Z80 πηγαίος κώδικας (main, hw, screen, particles, ...)
 assets/src/   Python που παράγει τα γραφικά
 assets/data/  παραγόμενα δεδομένα (db) για το rasm
-tools/        γεννήτρια πιστών, headless test
+tools/        γεννήτρια πιστών με solver, headless test
 plan.md       σχέδιο ανάπτυξης και ορόσημα
 ```
 

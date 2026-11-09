@@ -1,9 +1,9 @@
 # Liquid Logic — build
 #
 #   make            build/LiquidLogic.dsk (Extended DSK)
-#   make assets     ξαναπαράγει τα assets/data από το assets/src
+#   make assets     ξαναπαράγει τα assets/data (γραφικά, πίνακες, πίστες)
 #   make shot       headless emulator (~/cpcemu) -> build/screenshot.png
-#   make test       headless: μετάγγιση με τα πλήκτρα -> build/test_*.png
+#   make test       headless: λύνει πίστες με τα πλήκτρα, undo -> build/test_*.png
 #   make clean
 
 RASM     ?= rasm
@@ -15,7 +15,7 @@ DSK      := $(BUILD)/LiquidLogic.dsk
 LOADER   := $(BUILD)/disc.bas
 
 SRC      := $(wildcard src/*.asm)
-DATA     := assets/data/gfx.asm assets/data/physics.asm
+DATA     := assets/data/gfx.asm assets/data/physics.asm assets/data/levels.asm
 
 .PHONY: all assets shot test clean
 
@@ -32,11 +32,15 @@ $(DSK): $(SRC) $(DATA) Makefile
 	@head -c 21 $@ | grep -q 'EXTENDED CPC DSK File' || { echo "$@: δεν είναι Extended DSK"; exit 1; }
 	@$(IDSK) $@ -l 2>/dev/null | grep -E '^[A-Z0-9 ]{8}\.'
 
-$(DATA): assets/src/make_gfx.py
+assets/data/gfx.asm assets/data/physics.asm: assets/src/make_gfx.py
 	$(PYTHON) assets/src/make_gfx.py
+
+assets/data/levels.asm: tools/levels.py
+	$(PYTHON) tools/levels.py
 
 assets:
 	$(PYTHON) assets/src/make_gfx.py
+	$(PYTHON) tools/levels.py
 
 shot: $(DSK)
 	$(PYTHON) tools/headless.py shot

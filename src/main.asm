@@ -1,9 +1,9 @@
-; main.asm — Liquid Logic, M1: γραφικά + μηχανή particles
+; main.asm — Liquid Logic, M2: πίστες, κινήσεις, undo, αδιέξοδο, νίκη
 ;
-; Demo: 9 μπουκάλια σε δύο σειρές. Βελάκια/joystick = κέρσορας, SPACE =
-; επιλογή του μπουκαλιού από το οποίο αδειάζει (σηκώνεται) και μετά εκείνου
-; στο οποίο γεμίζει. Το υγρό πετάγεται σαν πίδακας σωματιδίων με βαρύτητα
-; (particles.asm). ESC = ακύρωση, R = από την αρχή.
+; Βελάκια/joystick = κέρσορας, SPACE = επιλογή του μπουκαλιού από το οποίο
+; αδειάζει (σηκώνεται) και μετά εκείνου στο οποίο γεμίζει. Το υγρό πετάγεται
+; σαν πίδακας σωματιδίων με βαρύτητα (particles.asm). ESC = ακύρωση,
+; U = undo, R = η πίστα από την αρχή.
 ;
 ; Memory map (RAM config C0, firmware εκτός, DI):
 ;   #0000-#003F  vectors (EI:RET στο #38, για ασφάλεια)
@@ -39,7 +39,7 @@ start:
         ld a,r                  ; seed (≠ 0)
         or 1
         ld (rnd_seed),a
-        call game_init
+        call game_start
 
 ; Μετά το VSYNC η δέσμη χρειάζεται ~4,6 ms ως την πρώτη γραμμή της εικόνας:
 ; εκεί χωράει το σβήσιμο/σχεδίαση των particles (particles.asm).
@@ -60,6 +60,7 @@ main_loop:
         include "game.asm"
         include "gfx.asm"
         include "physics.asm"
+        include "levels.asm"
 
 ;------------------------------------------------------------------
 ; Μεταβλητές
@@ -74,6 +75,17 @@ tmp_y:          db 0
 tmp_x0:         db 0
 tmp_ys:         db 0
 tmp_t:          db 0
+
+level:          db 0            ; πίστα (από 0)
+moves:          db 0
+undo_left:      db 0
+undo_sp:        db 0
+undo_stack:     ds UNDO_DEPTH*3
+num_buf:        ds 4
+level_flags:    db 0            ; header της πίστας (level_setup)
+level_moves:    db 0            ; με αυτή τη σειρά
+level_timer:    db 0
+level_par:      db 0
 
 nbottles:       db 0
 level_cap:      db 0

@@ -38,10 +38,14 @@ bottle_ix:
         pop hl
         ret
 
-; Φορτώνει μια διάταξη. in: HL = δεδομένα:
-;   db πλήθος, χωρητικότητα, μετά ανά μπουκάλι: db στρώσεις, pens...
-; Μοιράζει τα μπουκάλια σε σειρές και τα κεντράρει.
+; Φορτώνει μια πίστα (plan.md §6, assets/data/levels.asm). in: HL =
+;   header:   db flags, μπουκάλια, χωρητικότητα, κινήσεις, χρονόμετρο, par
+;   μπουκάλι: db bflags, freeze, lock, πλήθος, pens από κάτω...
+; Μοιράζει τα μπουκάλια σε σειρές και τα κεντράρει. Τα bflags/freeze/lock
+; και οι ειδικοί τύποι είναι για το M3.
 level_setup:
+        ld de,level_flags
+        ldi
         ld a,(hl)
         inc hl
         ld (nbottles),a
@@ -49,6 +53,12 @@ level_setup:
         ld a,(hl)
         inc hl
         ld (level_cap),a
+        ld de,level_moves
+        ldi
+        ldi
+        ldi
+        ld a,(nbottles)
+        ld b,a
         ld a,b                  ; μπουκάλια ανά σειρά
         cp ROW_MAX+1
         jr c,.one
@@ -145,6 +155,9 @@ level_setup:
         xor a
         ld (ix+B_RAISE),a
         ld (ix+B_DONE),a
+        inc hl                  ; bflags, freeze, lock (M3)
+        inc hl
+        inc hl
         ld a,(hl)               ; στρώσεις
         inc hl
         ld (ix+B_CNT),a
