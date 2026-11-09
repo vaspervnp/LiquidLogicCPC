@@ -41,7 +41,9 @@ start:
         ld a,r                  ; seed (≠ 0)
         or 1
         ld (rnd_seed),a
-        call game_start
+        ld a,1                  ; πρόοδος: ξεκλείδωτη μόνο η 1η πίστα
+        ld (unlocked),a
+        call title_start
 
 ; Μετά το VSYNC η δέσμη χρειάζεται ~4,6 ms ως την πρώτη γραμμή της εικόνας:
 ; εκεί χωράει το σβήσιμο/σχεδίαση των particles (particles.asm).
@@ -52,7 +54,7 @@ main_loop:
         call timer_tick
         call part_draw
         call read_input
-        call game_frame
+        call mode_frame
         jr main_loop
 
         include "hw.asm"
@@ -61,6 +63,7 @@ main_loop:
         include "particles.asm"
         include "pour.asm"
         include "game.asm"
+        include "ui.asm"
         include "gfx.asm"
         include "physics.asm"
 
@@ -68,8 +71,10 @@ main_loop:
 ; Μεταβλητές
 rnd_seed:       dw #ACE1
 keymap:         ds 10
-input:          db 0
+input:          db 0            ; IN_*, με αυτή τη σειρά
 input_new:      db 0
+input2:         db 0            ; IN2_*, με αυτή τη σειρά
+input2_new:     db 0
 txt_pen:        db 0
 tmp_pen:        db 0
 row_n:          db 0
@@ -79,13 +84,19 @@ tmp_x0:         db 0
 tmp_ys:         db 0
 tmp_t:          db 0
 
+mode:           db 0            ; MODE_*: τίτλος, επιλογή, παιχνίδι
+sel_level:      db 0
+unlocked:       db 1            ; πόσες πίστες παίζονται
+stars:          ds MAX_LEVELS   ; τα καλύτερα αστέρια ανά πίστα (0-3)
+tmp_stars:      db 0
+big_row:        ds 4
+paused_timer:   db 0
 level:          db 0            ; πίστα (από 0)
 moves:          db 0
 undo_left:      db 0
 undo_sp:        db 0
 undo_stack:     ds UNDO_MAX*SNAP_SIZE
 extra_used:     db 0
-key_e_prev:     db 0
 hud_msg:        db 0            ; 1 = μήνυμα στη θέση του HUD
 timer_on:       db 0
 time_up:        db 0
@@ -169,4 +180,5 @@ levels_data:
 levels_end:
 
         assert levels_end <= #8000, "bank 4 is full"
+        assert LEVEL_COUNT <= MAX_LEVELS, "too many levels"
         save "LEVELS.BIN",levels_data,levels_end-levels_data,DSK,"build/LiquidLogic.dsk"

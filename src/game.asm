@@ -6,14 +6,14 @@ ST_IDLE         equ 0           ; κέρσορας
 ST_SEL          equ 1           ; πηγή επιλεγμένη (σηκωμένη)
 ST_POUR         equ 2           ; ο πίδακας τρέχει
 ST_WIN          equ 3
-ST_FAIL         equ 4           ; τέλος χρόνου: μόνο R / SPACE
+ST_FAIL         equ 4           ; τέλος χρόνου: R / SPACE, M = μενού
+ST_PAUSE        equ 5           ; ESC: ESC = συνέχεια, R, M = μενού
 
 UNDO_MAX        equ 5           ; undo ανά πίστα
 LEVEL_MAX       equ 6+MAX_BOTTLES*(4+MAX_CAP)   ; header + μπουκάλια
+MAX_LEVELS      equ 100
 SNAP_SIZE       equ MAX_BOTTLES*BOT_SIZE+1      ; στιγμιότυπο: μπουκάλια + κινήσεις
 HUD_Y           equ 3
-KEY_E_LINE      equ 7           ; E: γραμμή 7, bit 2 του πληκτρολογίου
-KEY_E_BIT       equ 4
 
 ; Αντιγράφει την πίστα (level) από το bank 4 στο level_buf.
 level_load:
@@ -36,9 +36,6 @@ level_load:
         out (c),c
         ret
 
-game_start:
-        xor a
-        ld (level),a
 level_start:
         call cls
         call level_load
@@ -96,6 +93,8 @@ game_frame:
         jp z,.win
         cp ST_FAIL
         jp z,.fail
+        cp ST_PAUSE
+        jp z,.pause
         ld a,(input_new)
         and IN_RESTART
         jp nz,level_start
@@ -106,14 +105,8 @@ game_frame:
         or a
         call nz,deselect
         jp do_undo
-.extra: ld a,(keymap+KEY_E_LINE) ; E: έξτρα μπουκάλι
-        cpl
-        and KEY_E_BIT
-        ld hl,key_e_prev
-        ld b,(hl)
-        ld (hl),a
-        jr z,.move
-        cp b
+.extra: ld a,(input2_new)       ; E: έξτρα μπουκάλι
+        and IN2_EXTRA
         jr z,.move
         ld a,(state)
         or a
@@ -127,8 +120,16 @@ game_frame:
         jr z,.fire
         ld a,(state)
         or a
-        ret z
-        jp deselect
+        jp nz,deselect
+        ld a,ST_PAUSE           ; ESC χωρίς επιλογή: παύση (σταματάει ο χρόνος)
+        ld (state),a
+        ld a,(timer_on)
+        ld (paused_timer),a
+        xor a
+        ld (timer_on),a
+        ld hl,str_pause
+        ld a,PEN_WHITE
+        jp hud_message
 .fire:  ld a,(input_new)
         and IN_FIRE
         ret z
@@ -179,9 +180,7 @@ game_frame:
         ld (timer_on),a         ; A = 0
         ld a,ST_WIN
         ld (state),a
-        ld hl,str_win
-        ld a,PEN_LIQUID+2
-        jp hud_message
+        jp win_message
 .limit: ld a,(level_moves)      ; όριο κινήσεων
         or a
         jr z,.stuck
@@ -200,23 +199,87 @@ game_frame:
         ld hl,str_stuck_e
 .msg:   ld a,PEN_LIQUID
         jp hud_message
-.fail:  ld a,(input_new)
+.fail:  call .menu
+        ld a,(input_new)
         and IN_RESTART|IN_FIRE
         ret z
         jp level_start
-.win:   ld a,(input_new)
+.pause: call .menu
+        ld a,(input_new)
+        and IN_RESTART
+        jp nz,level_start
+        ld a,(input_new)
+        and IN_ESC
+        ret z
+        xor a                   ; συνέχεια
+        ld (state),a
+        ld a,(paused_timer)
+        ld (timer_on),a
+        jp hud_draw
+.win:   call .menu
+        ld a,(input_new)
         and IN_RESTART
         jp nz,level_start
         ld a,(input_new)
         and IN_FIRE
         ret z
-        ld a,(level)            ; επόμενη πίστα (μετά την τελευταία: η 1η)
+        ld a,(level)            ; επόμενη πίστα (μετά την τελευταία: μενού)
         inc a
         cp LEVEL_COUNT
-        jr c,.next
-        xor a
-.next:  ld (level),a
+        jp nc,select_start
+        ld (level),a
         jp level_start
+; M (ή ESC στη νίκη / στο τέλος χρόνου): στην επιλογή πίστας. Δεν επιστρέφει
+; τότε στον καλούντα.
+.menu:  ld a,(input2_new)
+        and IN2_MENU
+        jr nz,.tomenu
+        ld a,(state)
+        cp ST_PAUSE
+        ret z
+        ld a,(input_new)
+        and IN_ESC
+        ret z
+.tomenu:
+        pop hl
+        jp select_start
+
+; Νίκη: αστέρια (award_stars) και τι κάνει το SPACE / το M, στη θέση του HUD.
+win_message:
+        call award_stars
+        ld hl,str_stars+3
+        sub 3
+        neg
+        ld e,a                  ; 3 - αστέρια
+        ld d,0
+        or a
+        sbc hl,de
+        ld a,(hl)               ; κόβει το "***" στο πλήθος
+        push af
+        push hl
+        ld (hl),0
+        ld a,1
+        ld (hud_msg),a
+        call hud_clear
+        ld hl,str_clear
+        ld bc,HUD_Y*256+2
+        ld a,PEN_WHITE
+        call print_str
+        ld hl,str_stars
+        ld bc,HUD_Y*256+26
+        ld a,PEN_LIQUID+2
+        call print_str
+        pop hl
+        pop af
+        ld (hl),a               ; πίσω το "***"
+        ld hl,str_next
+        ld bc,HUD_Y*256+36
+        ld a,PEN_LIQUID+5
+        call print_str
+        ld hl,str_menu
+        ld bc,HUD_Y*256+60
+        ld a,PEN_GLASS
+        jp print_str
 
 ; Μετά από κάθε μετάγγιση (τα σωματίδια έχουν σβηστεί): ξεκλείδωμα όσων
 ; περιμένουν το χρώμα που μόλις ολοκληρώθηκε, και ο πάγος μετράει μία κίνηση.
@@ -689,7 +752,11 @@ str_left:       db "LEFT",0
 str_undo:       db "UNDO",0
 str_time:       db "TIME",0
 str_extra:      db "E+",0
-str_win:        db "LEVEL CLEAR! SPACE",0
+str_clear:      db "LEVEL CLEAR",0
+str_stars:      db "***",0
+str_next:       db "SPACE NEXT",0
+str_menu:       db "M MENU",0
+str_pause:      db "PAUSE  ESC PLAY  R RESTART  M MENU",0
 str_stuck:      db "NO MOVES! U UNDO  R RESTART",0
 str_stuck_e:    db "NO MOVES! E EXTRA BOTTLE",0
 str_nomoves:    db "OUT OF MOVES! U UNDO  R RESTART",0

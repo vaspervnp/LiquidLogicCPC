@@ -34,7 +34,8 @@ OUT = os.path.join(ROOT, "build")
 BOT_SIZE = 24
 B_CAP, B_CNT, B_RAISE, B_DONE, B_ROW, B_LAY, B_FLAGS, B_FREEZE, B_LOCK = 2, 3, 5, 6, 7, 8, 14, 15, 16
 BF_CURTAIN = 16
-ST_IDLE, ST_SEL, ST_POUR, ST_WIN, ST_FAIL = 0, 1, 2, 3, 4
+ST_IDLE, ST_SEL, ST_POUR, ST_WIN, ST_FAIL, ST_PAUSE = 0, 1, 2, 3, 4, 5
+MODE_TITLE, MODE_SELECT, MODE_GAME = 0, 1, 2
 UNDO_MAX = 5
 
 
@@ -241,12 +242,52 @@ def special_checks(g, lv, idx):
         g.check(g.peek("nbottles") == n, f"{name}: το R δεν έβγαλε το έξτρα μπουκάλι")
 
 
+def ui_checks(g, levs):
+    """Τίτλος -> επιλογή -> πίστα 1, κλειδωμένες, παύση, αστέρια, ξεκλείδωμα."""
+    c = g.c
+    g.check(g.peek("mode") == MODE_TITLE, "η εκκίνηση δεν είναι στον τίτλο")
+    shot(c, "test_title.png")
+    g.key(KEY_SPACE)
+    c.run_frames(10)
+    g.check(g.peek("mode") == MODE_SELECT, "SPACE στον τίτλο: όχι επιλογή πίστας")
+    shot(c, "test_select.png")
+    g.key(KEY_RIGHT)                    # η 2 είναι κλειδωμένη
+    g.key(KEY_SPACE)
+    c.run_frames(3)
+    g.check(g.peek("mode") == MODE_SELECT and g.peek("sel_level") == 1, "μπήκε σε κλειδωμένη πίστα")
+    g.key(KEY_LEFT)
+    g.key(KEY_SPACE)
+    c.run_frames(25)
+    g.check(g.peek("mode") == MODE_GAME and g.peek("level") == 0, "η πίστα 1 δεν ξεκίνησε")
+    # παύση
+    g.key(0x03)                         # ESC
+    c.run_frames(3)
+    g.check(g.peek("state") == ST_PAUSE, "ESC: όχι παύση")
+    shot(c, "test_pause.png")
+    g.key(0x03)
+    c.run_frames(3)
+    g.check(g.peek("state") == ST_IDLE, "ESC στην παύση: δεν συνέχισε")
+    # λύση στο par -> 3 αστέρια, ξεκλείδωμα της 2
+    g.play(levs[0], "πίστα 1 (μενού)")
+    shot(c, "test_win.png")
+    g.check(g.peek("stars") == 3, f"αστέρια {g.peek('stars')}, όχι 3")
+    g.check(g.peek("unlocked") == 2, f"ξεκλείδωτες {g.peek('unlocked')}, όχι 2")
+    g.key(ord("M"))
+    c.run_frames(10)
+    g.check(g.peek("mode") == MODE_SELECT, "M στη νίκη: όχι μενού")
+    shot(c, "test_select2.png")
+    g.key(KEY_RIGHT)
+    g.key(KEY_SPACE)
+    c.run_frames(25)
+    g.check(g.peek("mode") == MODE_GAME and g.peek("level") == 1, "η ξεκλείδωτη πίστα 2 δεν ξεκίνησε")
+
+
 def test(only=None):
     sym = symbols(SYM)
     levs = levels.levels()
     c = boot()
     g = Game(c, sym)
-    shot(c, "test_0_level1.png")
+    ui_checks(g, levs)
 
     # undo, άκυρη, R στην πίστα 2
     if only is None:

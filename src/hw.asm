@@ -72,15 +72,23 @@ IN_ESC          equ 32
 IN_RESTART      equ 64
 IN_UNDO         equ 128
 
-; out: (input) = κρατημένα, (input_new) = όσα πατήθηκαν σε αυτό το καρέ.
+; out: (input) = κρατημένα, (input_new) = όσα πατήθηκαν σε αυτό το καρέ·
+; το ίδιο για τις ενέργειες IN2_* στο input2 / input2_new.
 read_input:
         call read_keys
+        ld hl,key_bindings2
+        ld de,input2
+        call map_keys
         ld hl,key_bindings
+        ld de,input
+; HL = αντιστοιχίσεις, DE = κρατημένα (και +1: νέα).
+map_keys:
         ld c,0
 .next:  ld a,(hl)               ; γραμμή
         cp #FF
         jr z,.done
         inc hl
+        push de
         ld e,a
         ld d,0
         push hl
@@ -88,6 +96,7 @@ read_input:
         add hl,de
         ld a,(hl)
         pop hl
+        pop de
         and (hl)                ; bit του πλήκτρου: 0 = πατημένο
         inc hl
         jr nz,.up
@@ -96,12 +105,14 @@ read_input:
         ld c,a
 .up:    inc hl
         jr .next
-.done:  ld a,(input)
+.done:  ld a,(de)
         cpl
         and c
-        ld (input_new),a
+        inc de
+        ld (de),a
+        dec de
         ld a,c
-        ld (input),a
+        ld (de),a
         ret
 
 ; γραμμή, bit mask, ενέργεια
@@ -119,6 +130,14 @@ key_bindings:
         db 9,%00000100,IN_LEFT
         db 9,%00001000,IN_RIGHT
         db 9,%00010000,IN_FIRE
+        db #FF
+
+IN2_EXTRA       equ 1
+IN2_MENU        equ 2
+
+key_bindings2:
+        db 7,%00000100,IN2_EXTRA        ; E
+        db 4,%01000000,IN2_MENU         ; M
         db #FF
 
 ; xorshift 16-bit (John Metcalf). out: A = L = τυχαίο byte, HL = νέο seed.
