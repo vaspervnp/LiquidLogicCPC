@@ -40,7 +40,10 @@ big_row         equ mus_c+MC_SIZE
 num_buf         equ big_row+4
 relax_cols      equ num_buf+4
 relax_pool      equ relax_cols+12
-BSS_END         equ relax_pool+32
+fly_buf_a       equ relax_pool+32   ; φόντο κάτω από την πηγή στην πτήση
+fly_buf_b       equ fly_buf_a+FLY_SIZE
+fly_strip       equ fly_buf_b+FLY_SIZE  ; οι 2 στήλες του γερσίματος
+BSS_END         equ fly_strip+2*BOTTLE_H
 
 start:
         di
@@ -171,6 +174,30 @@ pour_pl:        db 0            ; pen_left / pen_right του pour_pen
 pour_pr:        db 0
 pour_space:     db 0
 pour_n:         db 0
+pour_phase:     db 0            ; 0 πτήση ως τον στόχο, 1 πίδακας, 2 επιστροφή
+hover_x:        db 0            ; δίπλα στον στόχο (x, y με αυτή τη σειρά)
+hover_y:        db 0
+hover_tilt:     db 0
+home_x:         db 0            ; η θέση της πηγής (x, y με αυτή τη σειρά)
+home_y:         db 0
+fly_x:          db 0            ; τρέχουσα θέση στην πτήση (x, y)
+fly_y:          db 0
+fly_nx:         db 0            ; νέα θέση (x, y)
+fly_ny:         db 0
+fly_ddx:        db 0
+fly_ddy:        db 0
+fly_ow:         db 0            ; επικάλυψη παλιάς/νέας θέσης
+fly_oh:         db 0
+fly_ro0:        db 0
+fly_ps:         db 0
+fly_cnt:        db 0
+fly_ax:         dw 0            ; 8.8
+fly_ay:         dw 0
+fly_sx:         dw 0
+fly_sy:         dw 0
+fly_old:        dw 0            ; buffers φόντου: τρέχουσα / νέα θέση
+fly_new:        dw 0
+strip_x:        db 0
 src_lines:      db 0            ; γραμμές υγρού στην οθόνη
 src_final:      db 0
 src_acc:        db 0

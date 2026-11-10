@@ -31,7 +31,7 @@ An invalid move buzzes and the bottle bounces.
 | Key | Action |
 |---|---|
 | Arrows / joystick | cursor: ← → along the row, ↑ ↓ change row |
-| SPACE / fire | 1st press: the bottle to pour **from** (it lifts); 2nd press: the bottle to pour **into** |
+| SPACE / fire | 1st press: the bottle to pour **from** (it lifts); 2nd press: the bottle to pour **into** (the first one flies next to it, tilts and pours) |
 | SPACE on the same / ESC | cancel the selection |
 | ESC (nothing selected) | pause: ESC resume, R restart, M menu |
 | U | undo (5 per level) |

@@ -197,9 +197,23 @@ game_frame:
 .bad:   call deselect           ; άκυρη: ακύρωση, βουητό, ο στόχος χοροπηδάει
         ld a,(sel_dst)
         jp shake_start
-.pour:  call particles_frame
+.pour:  ld a,(pour_phase)       ; πτήση, πίδακας, επιστροφή
+        or a
+        jr nz,.jet
+        call fly_step
         ret nz
-        call pour_finish
+        ld a,1
+        ld (pour_phase),a
+        jp pour_aim
+.jet:   dec a
+        jr nz,.back
+        call particles_frame
+        ret nz
+        ld a,2
+        ld (pour_phase),a
+        jp pour_finish
+.back:  call fly_step
+        ret nz
         call after_move
         xor a
         ld (state),a
