@@ -6,6 +6,7 @@
 #   make shot32     Caprice32 χωρίς παράθυρο: τίτλος και πίστα 1 -> build/cap32_*.png
 #   make test       headless: λύνει πίστες με τα πλήκτρα, undo -> build/test_*.png
 #   make sound      headless: οι registers του AY -> build/sound_*.wav
+#   make manual     εικόνες (docs/imgs) και PDF των εγχειριδίων (LibreOffice)
 #   make clean
 
 RASM     ?= rasm
@@ -20,7 +21,7 @@ SRC      := $(wildcard src/*.asm)
 DATA     := assets/data/gfx.asm assets/data/physics.asm assets/data/levels.asm assets/data/sound_data.asm
 LOADSCR  := assets/data/loading.bin
 
-.PHONY: all assets shot shot32 test sound clean
+.PHONY: all assets shot shot32 test sound manual clean
 
 all: $(DSK)
 
@@ -72,6 +73,9 @@ test: $(DSK)
 
 sound: $(DSK)
 	$(PYTHON) tools/sound_wav.py
+
+manual: $(DSK)
+	$(PYTHON) tools/manual.py
 
 clean:
 	rm -rf $(BUILD)

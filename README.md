@@ -80,6 +80,7 @@ make shot     # headless emulator -> build/screenshot.png
 make shot32   # Caprice32 χωρίς παράθυρο -> build/cap32_*.png
 make test     # headless emulator: λύνει και τις 100 πίστες, ελέγχει κάθε ειδικό τύπο και τη «Χαλάρωση»
 make sound    # headless emulator: μουσική τίτλου και πίστα 1 -> build/sound_*.wav
+make manual   # εικόνες στο docs/imgs και τα PDF των εγχειριδίων
 make clean
 ```
 
@@ -90,7 +91,7 @@ src/          Z80 πηγαίος κώδικας (main, hw, screen, particles, ..
 assets/src/   Python που παράγει τα γραφικά
 assets/data/  παραγόμενα δεδομένα (db) για το rasm
 tools/        γεννήτρια πιστών με solver, headless test, βίντεο
-docs/         εγχειρίδιο (manual-el.md, manual-en.md)
+docs/         εγχειρίδιο (manual-el/en .md και .pdf, εικόνες στο imgs/)
 plan.md       σχέδιο ανάπτυξης και ορόσημα
 ```
 
@@ -101,4 +102,5 @@ plan.md       σχέδιο ανάπτυξης και ορόσημα
 γέρσιμο του μπουκαλιού, διαβάθμιση φόντου, «Χαλάρωση» (και με seed), οθόνη
 φόρτωσης, επιλογές, οδηγίες και κάρτες, στατιστικά και μετάλλια, τέλος. Ελεγμένο στον headless
 emulator (λύνει όλες τις πίστες) και στον Caprice32· όχι ακόμα σε πραγματικό
-CPC. Εγχειρίδιο: [ελληνικά](docs/manual-el.md), [English](docs/manual-en.md).
+CPC. Εγχειρίδιο: [ελληνικά](docs/manual-el.md) ([PDF](docs/manual-el.pdf)),
+[English](docs/manual-en.md) ([PDF](docs/manual-en.pdf)).

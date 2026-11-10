@@ -18,6 +18,10 @@ changed (the HUD shows `SAVING...` for a few seconds), and loaded on the next
 start. Files from older versions are read too. The disc must not be write-protected; if
 it is, the game plays normally but progress is not kept.
 
+![The loading screen](imgs/loading.png)
+
+*The loading screen*
+
 ## The goal
 
 Each bottle holds layers of coloured liquid. Pour from bottle to bottle until
@@ -27,6 +31,10 @@ bottle gets a cork.
 A pour is allowed when the target bottle has room and is empty or has **the
 same colour** on top. The whole top run of that colour moves, as much as fits.
 An invalid move buzzes and the bottle bounces.
+
+![A pour: the bottle flies next to the target, tilts, and the jet fills the target](imgs/pour.png)
+
+*A pour: the bottle flies next to the target, tilts, and the jet fills the target*
 
 ## Controls
 
@@ -40,6 +48,10 @@ An invalid move buzzes and the bottle bounces.
 | R | restart the level |
 | E | one extra empty bottle, once, where the HUD shows `E+` |
 | M | on the win, pause or time-up screen: level select |
+
+![Source selected: it lifts, and the cursor moves on to the target](imgs/select_source.png)
+
+*Source selected: it lifts, and the cursor moves on to the target*
 
 ## Screens
 
@@ -62,6 +74,30 @@ An invalid move buzzes and the bottle bounces.
 - **Level** — the HUD on top: `LV` level, `MOVES` moves (or `LEFT` moves
   remaining), `UNDO` undos left, `TIME` time, `E+` extra bottle available.
 
+![The title](imgs/title.png)
+
+*The title*
+
+![Level select: solved levels in yellow, with their stars](imgs/select.png)
+
+*Level select: solved levels in yellow, with their stars*
+
+![Options](imgs/options.png)
+
+*Options*
+
+![Help, page 1](imgs/help.png)
+
+*Help, page 1*
+
+![A card for a new special type](imgs/card.png)
+
+*A card for a new special type*
+
+![Statistics and medals](imgs/stats.png)
+
+*Statistics and medals*
+
 ## Stars
 
 Every level has a **par**: the fewest moves the computer found.
@@ -73,6 +109,10 @@ Every level has a **par**: the fewest moves the computer found.
 | ★ | more |
 
 The best result per level is kept. Each solved level unlocks the next one.
+
+![Solved: the stars, and what SPACE and M do](imgs/win.png)
+
+*Solved: the stars, and what SPACE and M do*
 
 ## Special bottles and levels
 
@@ -87,6 +127,10 @@ The best result per level is kept. Each solved level unlocks the next one.
 | Thinner layers | **tall bottle**: 5 or 6 layers |
 | `LEFT n` in the HUD | **move limit**: at 0 without a solution, U or R |
 | `TIME n` in the HUD | **timer**: at 0, R to try again |
+
+![Level 100: ice, locks, dropper, hidden layers, timer and E+](imgs/specials.png)
+
+*Level 100: ice, locks, dropper, hidden layers, timer and E+*
 
 Every 10th level is a **Challenge**: several types together and one more colour.
 
@@ -105,12 +149,20 @@ stars or saving. The HUD shows `RELAX`.
 
 Nearly all of them can be solved; if you get stuck, use U, E or another level.
 
+![Relax with a seed: the HUD shows the seed](imgs/relax.png)
+
+*Relax with a seed: the HUD shows the seed*
+
 ### With a seed
 
 From the title, press **D**. Type 4 digits (DEL erases) and SPACE or RETURN.
 The same seed gives the same puzzles, in the same order, on every CPC: tell a
 friend your seed and play the same ones. The HUD shows the seed, and the win
 line which puzzle of the seed you solved (e.g. `2026-3`).
+
+![The seed screen](imgs/seed.png)
+
+*The seed screen*
 
 ## Medals
 
@@ -131,6 +183,14 @@ When you earn one, the win line alternates with `MEDAL: ...`.
 
 Solve level 100 too and press SPACE: a celebration awaits, and the **NEON**
 theme (black background, pink glass) unlocks in the options.
+
+![The ending, after level 100](imgs/ending.png)
+
+*The ending, after level 100*
+
+![The NEON theme](imgs/neon.png)
+
+*The NEON theme*
 
 ## When you're stuck
 

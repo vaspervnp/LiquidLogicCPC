@@ -393,6 +393,8 @@ src/sound.asm            AY από το interrupt: εφέ, γουργουρητ�
 src/disc.asm             πρόοδος στη δισκέτα μέσα από το AMSDOS (LIQUID.SAV)
 docs/manual-el.md        εγχειρίδιο (ελληνικά)
 docs/manual-en.md        εγχειρίδιο (αγγλικά)
+docs/manual-*.pdf        τα ίδια σε PDF, docs/imgs/ οι εικόνες τους (make manual)
+tools/manual.py          headless: εικόνες -> docs/imgs, markdown -> HTML -> PDF (LibreOffice)
 tools/cap32*.sh          Caprice32 χωρίς παράθυρο (make shot32)
 assets/src/make_sound.py νότες, εφέ, μελωδία -> assets/data/sound_data.asm
 tools/sound_wav.py       headless: registers του AY -> build/sound_*.wav
