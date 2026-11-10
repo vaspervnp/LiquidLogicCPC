@@ -9,7 +9,7 @@ set -e
 HERE=$(dirname "$(realpath "$0")")
 DSK=$(realpath "$1")
 OUT=$(realpath -m "${2:-build/screenshot.png}")
-PAD=${PAD:-400}
+PAD=${PAD:-650}
 SHOTS=$HOME/snap/caprice32/current/screenshots
 mkdir -p "$(dirname "$OUT")"
 KEY=${KEY:-z}

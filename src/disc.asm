@@ -24,7 +24,7 @@ FDC_MOTOR       equ #FA7E
 FW_STACK        equ #C000
 FILE_BUF        equ #4000           ; 2K buffer του AMSDOS (RAM, config C0)
 SAVE_BUF        equ #4800
-SAVE_SIZE       equ 1+MAX_LEVELS    ; unlocked + stars (συνεχόμενα στο main.asm)
+SAVE_SIZE       equ save_end-unlocked   ; συνεχόμενα στο main.asm
 NAME_BUF        equ SAVE_BUF+#100   ; και το όνομα: ό,τι διαβάζει το AMSDOS
                                     ; πρέπει να είναι πάνω από το #4000
 
@@ -42,6 +42,7 @@ load_progress:
         ld de,FILE_BUF
         call CAS_IN_OPEN
         jr nc,.none
+        ld (fw_sp),bc               ; το μήκος του αρχείου (παλιά: πιο μικρό)
         ld hl,SAVE_BUF
         call CAS_IN_DIRECT
         push af
@@ -53,9 +54,14 @@ load_progress:
         jr z,.none
         cp MAX_LEVELS+1
         jr nc,.none
-        ld hl,SAVE_BUF
-        ld de,unlocked
+        ld hl,(fw_sp)               ; min(μήκος, SAVE_SIZE)
         ld bc,SAVE_SIZE
+        or a
+        sbc hl,bc
+        jr nc,.size
+        ld bc,(fw_sp)
+.size:  ld hl,SAVE_BUF
+        ld de,unlocked
         ldir
 .none:  ld bc,FDC_MOTOR
         xor a

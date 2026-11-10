@@ -59,6 +59,7 @@ level_start:
         ld (cursor),a
         ld (state),a
         ld (extra_used),a
+        ld (undo_used),a
         ld (time_up),a
         ld (timer_on),a
         ld a,UNDO_MAX
@@ -75,6 +76,9 @@ level_start:
         ld (time_frames),a
         ld (timer_on),a
 .notime:
+        call card_check         ; κάρτα για νέο ειδικό τύπο: πρώτα αυτή, και
+        ret nz                  ; μετά το level_show (help.asm)
+level_show:
         call draw_all_bottles
         call hud_draw
         xor a
@@ -271,7 +275,8 @@ game_frame:
         ld a,(paused_timer)
         ld (timer_on),a
         jp hud_draw
-.win:   ld a,(input_new)        ; φεύγοντας από τη νίκη: αποθήκευση, αν άλλαξε
+.win:   call medal_toast        ; νέα μετάλλια, εναλλάξ με τη γραμμή της νίκης
+        ld a,(input_new)        ; φεύγοντας από τη νίκη: αποθήκευση, αν άλλαξε
         and IN_RESTART|IN_FIRE|IN_ESC   ; κάτι (δεν ξανατρέχει: save_dirty = 0)
         ld b,a
         ld a,(input2_new)
@@ -295,7 +300,7 @@ game_frame:
 .next:  ld a,(level)            ; επόμενη πίστα (μετά την τελευταία: μενού)
         inc a
         cp LEVEL_COUNT
-        jp nc,select_start
+        jp nc,ending_start      ; (μετά την τελευταία: το τέλος)
         ld (level),a
         jp level_start
 ; M (ή ESC στη νίκη / στο τέλος χρόνου): στην επιλογή πίστας. Δεν επιστρέφει
@@ -313,7 +318,7 @@ game_frame:
         pop hl
         ld a,(relax)            ; από τη «Χαλάρωση»: στον τίτλο
         or a
-        jp nz,title_start
+        jp nz,relax_leave
         jp select_start
 
 ; Η πρόοδος στη δισκέτα, αν άλλαξε από την τελευταία φορά (award_stars).
@@ -329,8 +334,13 @@ save_if_dirty:
         call hud_message
         jp save_progress
 
-; Νίκη: αστέρια (award_stars) και τι κάνει το SPACE / το M, στη θέση του HUD.
+; Νίκη: αστέρια, στατιστικά, μετάλλια (win_stats), και η γραμμή της νίκης.
 win_message:
+        call win_stats
+
+; Η γραμμή της νίκης στη θέση του HUD: αστέρια (win_stars) και τι κάνει το
+; SPACE / το M.
+win_line:
         ld a,(relax)
         or a
         jr z,.stars
@@ -341,8 +351,9 @@ win_message:
         ld bc,HUD_Y*256+2
         ld a,PEN_WHITE
         call print_str
+        call seed_tag           ; με seed: και ποια πίστα
         jr .keys
-.stars: call award_stars
+.stars: ld a,(win_stars)
         ld hl,str_stars+3
         sub 3
         neg
@@ -420,7 +431,13 @@ shake_stop:
 ; Μετά από κάθε μετάγγιση (τα σωματίδια έχουν σβηστεί): ξεκλείδωμα όσων
 ; περιμένουν το χρώμα που μόλις ολοκληρώθηκε, και ο πάγος μετράει μία κίνηση.
 after_move:
-        ld ix,(pour_dst)
+        ld hl,(stat_pours)      ; στατιστικά: ως 65535
+        inc hl
+        ld a,h
+        or l
+        jr z,.sat
+        ld (stat_pours),hl
+.sat:   ld ix,(pour_dst)
         ld a,(ix+B_DONE)
         or a
         ld c,0
@@ -515,6 +532,7 @@ do_undo:
         ld a,(undo_sp)
         or a
         ret z
+        ld (undo_used),a        ; (≠ 0) για το μετάλλιο NO REGRETS
         dec a
         ld (undo_sp),a
         call snap_ptr
@@ -646,10 +664,7 @@ hud_draw:
         ld a,(relax)
         or a
         jr z,.lvn
-        ld hl,str_relax
-        ld bc,HUD_Y*256+1
-        ld a,PEN_LIQUID+2
-        call print_str
+        call relax_label
         jr .lvdone
 .lvn:   ld hl,str_lv
         ld bc,HUD_Y*256+1

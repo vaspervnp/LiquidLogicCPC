@@ -10,10 +10,12 @@ Put the disc in drive A and type:
 RUN"DISC
 ```
 
-The 100 levels load first, then the game. Your progress (unlocked levels and
-their stars) is written to the disc, in `LIQUID.SAV`, when you leave the win
-screen of a level with a better result (the HUD shows `SAVING...` for a few
-seconds), and loaded on the next start. The disc must not be write-protected; if
+The loading screen appears first; the levels and the game load while you
+look at it (about 14 seconds). Your progress (unlocked levels and stars,
+options, statistics, medals, your seed) is written to the disc, in
+`LIQUID.SAV`, when you leave the win screen or the options and something has
+changed (the HUD shows `SAVING...` for a few seconds), and loaded on the next
+start. Files from older versions are read too. The disc must not be write-protected; if
 it is, the game plays normally but progress is not kept.
 
 ## The goal
@@ -41,7 +43,20 @@ An invalid move buzzes and the bottle bounces.
 
 ## Screens
 
-- **Title** — SPACE for level select, R for Relax mode.
+- **Title** — SPACE for level select, R for Relax mode, D for Relax with a
+  seed, O for options, H for help, S for statistics.
+- **Options** (O) — ↑ ↓ to choose, SPACE or ← → to change, ESC to go back.
+  `MUSIC`/`SOUND FX` on/off, `SPEED` `NORMAL` or `FAST` (the bottle flies
+  faster), `THEME` `CLASSIC` or `NEON` (unlocked after level 100), `KEYS`
+  `REDEFINE`: press in turn the keys for left, right, up, down and fire (not
+  ESC). The joystick always works.
+- **Help** (H) — 4 pages: SPACE/→ next, ← previous, ESC back.
+- **Cards** — the first time a level has a special type (ice, lock, ...), a
+  card explains it with an example before the level starts (SPACE to go on;
+  the clock doesn't run).
+- **Statistics** (S) — levels solved, stars, perfect levels (3 stars), pours,
+  Relax puzzles, and the 12 medals: yellow the ones you have, grey the rest.
+  Pick one with the arrows to see what it takes.
 - **Level select** — 100 cells. Grey: locked. White: available. Yellow:
   solved, with their stars below. Arrows and SPACE; ESC back to the title.
 - **Level** — the HUD on top: `LV` level, `MOVES` moves (or `LEFT` moves
@@ -89,6 +104,33 @@ stars or saving. The HUD shows `RELAX`.
 | M / ESC on the win screen | back to the title |
 
 Nearly all of them can be solved; if you get stuck, use U, E or another level.
+
+### With a seed
+
+From the title, press **D**. Type 4 digits (DEL erases) and SPACE or RETURN.
+The same seed gives the same puzzles, in the same order, on every CPC: tell a
+friend your seed and play the same ones. The HUD shows the seed, and the win
+line which puzzle of the seed you solved (e.g. `2026-3`).
+
+## Medals
+
+| Medal | How |
+|---|---|
+| FIRST DROP | your first solved level |
+| TEN DOWN / HALFWAY / CENTURY | 10 / 50 / 100 levels solved |
+| PERFECT TEN / PERFECTIONIST | 3 stars on 10 / on all levels |
+| UNWINDING / ZEN MASTER | 10 / 100 Relax puzzles |
+| NO REGRETS | a level from 30 on without any undo |
+| CLOSE CALL | a timed level with 10 seconds or less left |
+| BUSY HANDS | 1000 pours |
+| GARDENER | a seeded puzzle |
+
+When you earn one, the win line alternates with `MEDAL: ...`.
+
+## The ending
+
+Solve level 100 too and press SPACE: a celebration awaits, and the **NEON**
+theme (black background, pink glass) unlocks in the options.
 
 ## When you're stuck
 

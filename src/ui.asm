@@ -1,8 +1,15 @@
-; ui.asm — οθόνες: τίτλος, επιλογή πίστας, αστέρια και πρόοδος
+; ui.asm — οθόνες: τίτλος, επιλογή πίστας, αστέρια και πρόοδος. Μαζί με
+; τα options/help/stats/ending.asm στο EXTRA.BIN (#4A00).
 
 MODE_TITLE      equ 0
 MODE_SELECT     equ 1
 MODE_GAME       equ 2
+MODE_CARD       equ 3           ; κάρτα νέου ειδικού τύπου (help.asm)
+MODE_OPTIONS    equ 4
+MODE_HELP       equ 5
+MODE_STATS      equ 6
+MODE_END        equ 7           ; μετά την πίστα 100 (ending.asm)
+MODE_SEED       equ 8           ; «Χαλάρωση» με seed (stats.asm)
 
 GRID_Y          equ 22          ; επιλογή πίστας: 10 x 10 κελιά
 GRID_DY         equ 18
@@ -10,12 +17,46 @@ CELL_W          equ 8           ; bytes
 
 ; Ανά καρέ, ανάλογα με την οθόνη.
 mode_frame:
+        ld hl,keymap_old        ; keyprev = το keymap του προηγούμενου καρέ
+        ld de,keyprev           ; (για τα key_new)
+        ld bc,10
+        ldir
+        ld hl,keymap
+        ld de,keymap_old
+        ld bc,10
+        ldir
         ld a,(mode)
-        cp MODE_GAME
-        jp z,game_frame
-        cp MODE_SELECT
-        jp z,select_frame
-        jp title_frame
+        add a,a
+        ld l,a
+        ld h,0
+        ld de,mode_table
+        add hl,de
+        ld a,(hl)
+        inc hl
+        ld h,(hl)
+        ld l,a
+        jp (hl)
+
+mode_table:
+        dw title_frame,select_frame,game_frame,card_frame,options_frame
+        dw help_frame,stats_frame,ending_frame,seed_frame
+
+; NZ = το πλήκτρο (A = γραμμή του matrix, C = bit) πατήθηκε σε αυτό το καρέ.
+key_new:
+        ld e,a
+        ld d,0
+        ld hl,keymap
+        add hl,de
+        ld a,(hl)
+        cpl                     ; 1 = πατημένο τώρα
+        ld hl,keyprev
+        add hl,de
+        and (hl)                ; ... και όχι στο προηγούμενο καρέ
+        and c
+        ret
+
+keymap_old:     ds 10,#FF
+keyprev:        ds 10,#FF
 
 ;------------------------------------------------------------------
 ; Τίτλος: «LIQUID LOGIC» με μεγάλα γράμματα που κάθε γραμμή τους έχει άλλο
@@ -24,6 +65,7 @@ title_start:
         xor a
         ld (mode),a
         ld (relax),a
+        ld (relax_seed),a
         call music_start
         call cls
         ld hl,title_bottles
@@ -36,11 +78,15 @@ title_start:
         ld bc,34*256+30
         call print_big
         ld hl,str_press
-        ld bc,160*256+21
+        ld bc,156*256+20
         ld a,PEN_WHITE
         call print_str
+        ld hl,str_more
+        ld bc,170*256+6
+        ld a,PEN_LIQUID+5
+        call print_str
         ld hl,str_machine
-        ld bc,182*256+24
+        ld bc,187*256+24
         ld a,PEN_GLASS
         jp print_str
 
@@ -48,20 +94,45 @@ title_frame:
         ld a,(input_new)        ; R: «Χαλάρωση»
         and IN_RESTART
         jr z,.fire
+        xor a
+        ld (relax_seed),a
+        jp relax_go
+.fire:  ld a,(input_new)
+        and IN_FIRE
+        jr z,.keys
+        ld hl,sfx_select
+        call play_sfx
+        jp select_start
+.keys:  ld a,KR_O
+        ld c,KB_O
+        call key_new
+        jp nz,options_start
+        ld a,KR_H
+        ld c,KB_H
+        call key_new
+        jp nz,help_start
+        ld a,KR_S
+        ld c,KB_S
+        call key_new
+        jp nz,stats_start
+        ld a,KR_D
+        ld c,KB_D
+        call key_new
+        jp nz,seed_start
+        ret
+
+; «Χαλάρωση» (relax_seed: με seed ή όχι): η πρώτη πίστα.
+relax_go:
         ld a,1
         ld (relax),a
         ld (relax_new),a
+        xor a
+        ld (relax_num),a
         ld hl,sfx_select
         call play_sfx
         ld a,MODE_GAME
         ld (mode),a
         jp level_start
-.fire:  ld a,(input_new)
-        and IN_FIRE
-        ret z
-        ld hl,sfx_select
-        call play_sfx
-        jp select_start
 
 ; Πέντε ολοκληρωμένα μπουκάλια (μορφή πίστας, levels.asm).
 title_bottles:
@@ -439,6 +510,7 @@ award_stars:
 
 str_title1:     db "LIQUID",0
 str_title2:     db "LOGIC",0
-str_press:      db "SPACE PLAY  R RELAX",0
+str_press:      db "SPACE PLAY   R RELAX",0
+str_more:       db "D SEED  O OPTIONS  H HELP  S STATS",0
 str_machine:    db "AMSTRAD CPC 6128",0
 str_select:     db "SELECT LEVEL",0

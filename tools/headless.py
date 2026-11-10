@@ -36,7 +36,7 @@ BOT_SIZE = 24
 B_CAP, B_CNT, B_RAISE, B_DONE, B_ROW, B_LAY, B_FLAGS, B_FREEZE, B_LOCK = 2, 3, 5, 6, 7, 8, 14, 15, 16
 BF_CURTAIN = 16
 ST_IDLE, ST_SEL, ST_POUR, ST_WIN, ST_FAIL, ST_PAUSE = 0, 1, 2, 3, 4, 5
-MODE_TITLE, MODE_SELECT, MODE_GAME = 0, 1, 2
+MODE_TITLE, MODE_SELECT, MODE_GAME, MODE_CARD, MODE_OPTIONS, MODE_HELP, MODE_STATS, MODE_END, MODE_SEED = range(9)
 UNDO_MAX = 5
 
 
@@ -49,13 +49,29 @@ def symbols(path):
     return sym
 
 
-def boot():
+def boot(disc=DSK, shots=None):
+    """RUN"DISC και αναμονή ως τον τίτλο (shots: λίστα για καρέ του φορτώματος)."""
     c = CPC()
     c.run_frames(150)
-    c.insert_disc(DSK)
+    c.insert_disc(disc)
     c.type_text('RUN"DISC\n')
-    c.run_frames(450)                   # LEVELS.BIN στο bank 4, μετά LIQUID.BIN
+    wait_ready(c, shots)
     return c
+
+
+def wait_ready(c, shots=None):
+    """Ως τον τίτλο: οθόνη, LEVELS.BIN στο bank 4, EXTRA.BIN, LIQUID.BIN, και
+    το JP int_handler στο #38 (μετά το load_progress)."""
+    sym = symbols(SYM)
+    for k in range(400):
+        c.run_frames(10)
+        if shots is not None and k % 10 == 0:
+            shots.append(frame_image(c))
+        if (c.peek(0x38) == 0xC3 and c.peek(0x39) | c.peek(0x3A) << 8 == sym["int_handler"]
+                and c.peek(sym["mode"]) == MODE_TITLE):
+            c.run_frames(30)
+            return k * 10
+    raise RuntimeError("το παιχνίδι δεν ξεκίνησε")
 
 
 def frame_image(c):
@@ -75,6 +91,7 @@ class Game:
     def __init__(self, c, sym):
         self.c, self.sym = c, sym
         self.fails = 0
+        self.cards = 0
 
     def peek(self, name, off=0):
         return self.c.peek(self.sym[name] + off)
@@ -143,6 +160,10 @@ class Game:
         self.c.write_ram(self.sym["level"], bytes([index]))
         self.key(ord("R"))
         for _ in range(300):            # (μετά από νίκη: πρώτα η αποθήκευση)
+            if self.peek("mode") == MODE_CARD:  # κάρτες νέων ειδικών τύπων
+                self.cards += 1
+                self.key(KEY_SPACE)
+                continue
             if (self.peek("level") == index and self.peek("moves") == 0 and
                     self.peek("state") == ST_IDLE and self.peek("undo_left") == UNDO_MAX):
                 break
@@ -296,11 +317,7 @@ def ui_checks(g, levs):
     # αποθήκευση: το LIQUID.SAV στη δισκέτα, και φορτώνεται σε νέα εκκίνηση
     img = c.disc_image()
     g.check(b"LIQUID  SAV" in img, "το LIQUID.SAV δεν γράφτηκε στη δισκέτα")
-    c2 = CPC()
-    c2.run_frames(150)
-    c2.insert_disc(img)
-    c2.type_text('RUN"DISC\n')
-    c2.run_frames(500)
+    c2 = boot(img)
     g.check(c2.peek(g.sym["unlocked"]) == 2 and c2.peek(g.sym["stars"]) == 3 and
             c2.peek(g.sym["mode"]) == MODE_TITLE, "η πρόοδος δεν φορτώθηκε μετά από επανεκκίνηση")
     shot(c, "test_select2.png")
@@ -364,8 +381,124 @@ def relax_checks(g, puzzles=3):
     g.key(0x03)
     c.run_frames(3)
     g.key(ord("M"))
-    c.run_frames(25)
+    c.run_frames(300)                   # (αποθήκευση των μετρητών, μία φορά)
     g.check(g.peek("mode") == MODE_TITLE and g.peek("relax") == 0, "χαλάρωση: το M δεν γύρισε στον τίτλο")
+    g.check(word(c, g.sym["stat_relax"]) >= puzzles and b"LIQUID  SAV" in c.disc_image(),
+            "χαλάρωση: οι μετρητές δεν αποθηκεύτηκαν")
+
+
+def word(c, addr):
+    return c.peek(addr) | c.peek(addr + 1) << 8
+
+
+def to_title(g):
+    """Από όπου κι αν είμαστε ως τον τίτλο."""
+    c = g.c
+    for _ in range(6):
+        m = g.peek("mode")
+        if m == MODE_TITLE:
+            return
+        if m == MODE_GAME:
+            if g.peek("state") not in (ST_PAUSE, ST_WIN, ST_FAIL):
+                g.key(0x03)
+                c.run_frames(3)
+            g.key(ord("m"))
+        else:
+            g.key(0x03)
+        c.run_frames(250)
+    g.check(g.peek("mode") == MODE_TITLE, "δεν γύρισε στον τίτλο")
+
+
+def feature_checks(g):
+    """Επιλογές, οδηγίες, στατιστικά, «Χαλάρωση» με seed (ίδιο seed -> ίδιες
+    πίστες)."""
+    c, sym = g.c, g.sym
+    to_title(g)
+    # επιλογές: εφέ off/on, γρήγορη πτήση, θέμα κλειδωμένο ως την πίστα 100
+    g.key(ord("o"))
+    c.run_frames(10)
+    g.check(g.peek("mode") == MODE_OPTIONS, "O: όχι επιλογές")
+    shot(c, "test_options.png")
+    g.key(KEY_DOWN)
+    g.key(KEY_SPACE)
+    c.run_frames(3)
+    g.check(g.peek("opt_sfx") == 0, "επιλογές: τα εφέ δεν έκλεισαν")
+    g.key(KEY_SPACE)
+    g.key(KEY_DOWN)
+    g.key(KEY_SPACE)
+    c.run_frames(3)
+    g.check(g.peek("opt_sfx") == 1 and g.peek("opt_speed") == 1, "επιλογές: εφέ/ταχύτητα")
+    g.key(KEY_SPACE)
+    g.key(KEY_DOWN)
+    g.key(KEY_SPACE)
+    c.run_frames(3)
+    g.check(g.peek("opt_theme") == g.peek("theme_open"), "επιλογές: θέμα χωρίς ξεκλείδωμα")
+    g.key(0x03)
+    c.run_frames(250)                   # (αποθήκευση)
+    g.check(g.peek("mode") == MODE_TITLE, "επιλογές: ESC όχι τίτλος")
+    # οδηγίες: 4 σελίδες και πίσω
+    g.key(ord("h"))
+    c.run_frames(10)
+    g.check(g.peek("mode") == MODE_HELP, "H: όχι οδηγίες")
+    for _ in range(4):
+        g.key(KEY_SPACE)
+        c.run_frames(5)
+    g.check(g.peek("mode") == MODE_TITLE, "οδηγίες: δεν γύρισαν στον τίτλο")
+    # στατιστικά
+    g.key(ord("s"))
+    c.run_frames(10)
+    g.check(g.peek("mode") == MODE_STATS, "S: όχι στατιστικά")
+    shot(c, "test_stats.png")
+    g.key(KEY_RIGHT)
+    g.check(g.peek("md_sel") == 6, "στατιστικά: επιλογή μεταλλίου")
+    g.key(0x03)
+    c.run_frames(10)
+
+    def seeded(digits, more=0):
+        g.key(ord("d"))
+        c.run_frames(10)
+        for k in digits:
+            g.key(ord(k))
+        g.key(KEY_SPACE)
+        c.run_frames(30)
+        out = [g.layers()]
+        for _ in range(more):
+            g.key(0x03)
+            c.run_frames(3)
+            g.key(KEY_SPACE)
+            c.run_frames(30)
+            out.append(g.layers())
+        to_title(g)
+        return out
+
+    a = seeded("0042", 1)
+    g.check(word(c, sym["last_seed"]) == 42, "seed: δεν γράφτηκε το 42")
+    b = seeded("", 1)                   # ξανά το 42 (μένει)
+    d = seeded("43")                    # 42 -> 4243
+    g.check(a == b and a[0] != a[1] and d[0] != a[0], f"seed: {a} / {b} / {d}")
+    print("seed 0042: ίδιες πίστες", a == b)
+
+
+def old_save_check(g):
+    """LIQUID.SAV της παλιάς μορφής (unlocked + stars): φορτώνεται, τα υπόλοιπα
+    με τις αρχικές τιμές."""
+    import shutil
+    import subprocess
+    import tempfile
+    tmp = tempfile.mkdtemp()
+    dsk = os.path.join(tmp, "old.dsk")
+    shutil.copy(DSK, dsk)
+    sav = os.path.join(tmp, "liquid.sav")
+    with open(sav, "wb") as f:
+        f.write(bytes([7]) + bytes([3, 2, 1, 3, 3, 1]) + bytes(94))
+    subprocess.run(["iDSK", dsk, "-i", sav, "-t", "1", "-c", "4800", "-e", "4800"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    c = boot(dsk)
+    sym = g.sym
+    got = (c.peek(sym["unlocked"]), list(c.read_ram(sym["stars"], 7)), c.peek(sym["opt_music"]),
+           c.peek(sym["opt_keys"]), word(c, sym["last_seed"]))
+    g.check(got == (7, [3, 2, 1, 3, 3, 1, 0], 1, 1, 2026), f"παλιό LIQUID.SAV: {got}")
+    shutil.rmtree(tmp)
 
 
 def test(only=None):
@@ -398,7 +531,7 @@ def test(only=None):
         c.run_frames(25)                # (το level_start κρατάει μερικά καρέ)
         g.check(g.layers() == start and g.peek("moves") == 0 and g.peek("undo_left") == UNDO_MAX, "R")
 
-    todo = range(len(levs)) if only is None else [only]
+    todo = list(range(len(levs))) if only is None else [only]
     for idx in todo:
         lv = levs[idx]
         g.load_level(idx)
@@ -407,6 +540,31 @@ def test(only=None):
         before = g.fails
         g.play(lv, f"πίστα {idx + 1}")
         print(f"πίστα {idx + 1:2d}: {'OK' if g.fails == before else 'ΑΠΟΤΥΧΙΑ'}  (par {lv['par']})")
+
+    # μετά την πίστα 100: το τέλος, το θέμα NEON, τα μετάλλια της προόδου
+    if todo[-1] == len(levs) - 1 and g.peek("state") == ST_WIN:
+        c.run_frames(120)
+        shot(c, "test_medal.png")
+        g.check(g.peek("theme_open") == 1, "πίστα 100: το θέμα δεν ξεκλείδωσε")
+        g.key(KEY_SPACE)
+        c.run_frames(250)
+        g.check(g.peek("mode") == MODE_END, "πίστα 100: όχι το τέλος")
+        c.run_frames(60)
+        shot(c, "test_end.png")
+        md = word(c, sym["medals"])
+        if only is None:
+            g.check(md & 0x3F == 0x3F, f"μετάλλια μετά από όλες τις πίστες: {md:#x}")
+        print(f"μετάλλια: {md:#06x}")
+        g.key(KEY_SPACE)
+        c.run_frames(20)
+        g.check(g.peek("mode") == MODE_TITLE, "τέλος: SPACE όχι τίτλος")
+        g.key(KEY_SPACE)                # πίσω σε πίστα, για τα επόμενα
+        c.run_frames(25)
+        g.key(KEY_SPACE)
+        c.run_frames(30)
+        while g.peek("mode") == MODE_CARD:
+            g.key(KEY_SPACE)
+            c.run_frames(30)
 
     # αδιέξοδο: πίστα 3 με γραμμένες στρώσεις, μία κίνηση και μετά τίποτα
     if only is None:
@@ -427,6 +585,9 @@ def test(only=None):
 
     if only is None:
         relax_checks(g)
+        feature_checks(g)
+        old_save_check(g)
+    print(f"κάρτες: {g.cards}")
     print("OK" if not g.fails else f"{g.fails} αποτυχίες")
     return 1 if g.fails else 0
 

@@ -115,7 +115,12 @@ sound_init:
 
 ; Εφέ στο κανάλι B (κόβει ό,τι έπαιζε εκεί). HL = sfx_*.
 play_sfx:
+        push af
+        ld a,(opt_sfx)
+        or a
+        jr z,.off
         ld (sfx_ptr),hl
+.off:   pop af
         ret
 
 ; Γουργουρητό: κάθε 3 γραμμές υγρού στον στόχο ένα «πλιπ», που ψηλώνει όσο
@@ -133,6 +138,9 @@ pour_plip:
         or a
         sbc hl,de
         ld (plip_per),hl
+        ld a,(opt_sfx)
+        or a
+        ret z
         ld a,PLIP_LOUD
         ld (plip_vol),a
         ret
@@ -222,6 +230,9 @@ MC_VREG         equ 7           ; register έντασης (8 / 10)
 MC_SIZE         equ 8
 
 music_start:
+        ld a,(opt_music)
+        or a
+        ret z
         ld a,(music_on)
         or a
         ret nz

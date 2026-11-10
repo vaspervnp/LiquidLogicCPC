@@ -13,6 +13,10 @@
 ;   #1000-#3FFF  κώδικας + δεδομένα
 ;   #4000-#7FFF  παράθυρο του bank 4 (RAM config C4), μόνο στο level_load:
 ;                οι 100 πίστες (LEVELS.BIN, το φορτώνει το DISC.BAS)
+;   #4000-#49FF  (C0) buffers του AMSDOS, μόνο στην αποθήκευση
+;   #4A00-#7FFF  (C0) EXTRA.BIN: οθόνες και μενού (τίτλος, επιλογή, επιλογές,
+;                οδηγίες, κάρτες, στατιστικά, τέλος, seed) και «Χαλάρωση».
+;                Ποτέ μέσα στο level_load (C4) ή από το firmware.
 ;   #8000-#A6FF  buffers χωρίς αρχική τιμή (BSS: λίστες σχεδίασης, undo, μπουκάλια...)
 ;   #C000-#FFFF  οθόνη
 
@@ -54,6 +58,7 @@ start:
         ei
         call load_progress      ; με το firmware ακόμα ενεργό
         di
+        call apply_settings     ; πλήκτρα και θέμα από το LIQUID.SAV
         ld sp,STACK_TOP
         im 1
         ld a,#C3                ; JP int_handler στο #38 (sound.asm)
@@ -93,8 +98,6 @@ main_loop:
         include "particles.asm"
         include "pour.asm"
         include "game.asm"
-        include "relax.asm"
-        include "ui.asm"
         include "sound.asm"
         include "disc.asm"
         include "gfx.asm"
@@ -128,8 +131,29 @@ frames_int:     db 0            ; καρέ: από το interrupt του VSYNC
 frames_main:    db 0            ; γύροι του κύριου βρόχου (διαφορά = late frames)
 mode:           db 0            ; MODE_*: τίτλος, επιλογή, παιχνίδι
 sel_level:      db 0
-unlocked:       db 1            ; πόσες πίστες παίζονται      } LIQUID.SAV,
-stars:          ds MAX_LEVELS   ; καλύτερα αστέρια ανά πίστα  } συνεχόμενα
+; LIQUID.SAV: από το unlocked ως το save_end, συνεχόμενα. Τα παλιά αρχεία
+; (μόνο unlocked + stars) φορτώνονται κι αυτά: τα υπόλοιπα μένουν ως εδώ.
+unlocked:       db 1            ; πόσες πίστες παίζονται
+stars:          ds MAX_LEVELS   ; καλύτερα αστέρια ανά πίστα
+opt_music:      db 1            ; επιλογές (options.asm)
+opt_sfx:        db 1
+opt_speed:      db 0            ; 1 = γρήγορη πτήση
+opt_theme:      db 0            ; 1 = NEON (theme_open: μετά την πίστα 100)
+theme_open:     db 0
+opt_keys:       db 1,%00000001  ; αριστερά, δεξιά, πάνω, κάτω, fire:
+                db 0,%00000010  ; γραμμή του matrix, bit
+                db 0,%00000001
+                db 0,%00000100
+                db 5,%10000000
+stat_pours:     dw 0            ; στατιστικά (ως 65535)
+stat_relax:     dw 0
+medals:         dw 0            ; MD_* (stats.asm)
+seen_cards:     dw 0            ; CD_*: κάρτες ειδικών τύπων που έχουν δειχτεί
+last_seed:      dw 2026
+save_end:
+undo_used:      db 0            ; στην τρέχουσα πίστα
+relax_seed:     db 0            ; 1 = «Χαλάρωση» με seed (last_seed)
+relax_num:      db 0            ; αριθμός πίστας του seed (από 1)
 fw_sp:          dw 0
 save_dirty:     db 0            ; 1 = η πρόοδος άλλαξε (award_stars)
 tmp_stars:      db 0
@@ -242,6 +266,24 @@ code_end:
 ; Το rasm γράφει το αρχείο κατευθείαν σε Extended DSK, με AMSDOS header
 ; (load = exec = #1000).
         save "LIQUID.BIN",#1000,code_end-#1000,DSK,"build/LiquidLogic.dsk"
+
+;------------------------------------------------------------------
+; EXTRA.BIN στο #4A00 (κύρια RAM, C0): το φορτώνει το DISC.BAS πριν από το
+; LIQUID.BIN.
+;------------------------------------------------------------------
+
+        org #4A00
+extra_start:
+        include "ui.asm"
+        include "relax.asm"
+        include "options.asm"
+        include "help.asm"
+        include "stats.asm"
+        include "ending.asm"
+extra_end:
+
+        assert extra_end <= #8000, "EXTRA.BIN overflows"
+        save "EXTRA.BIN",extra_start,extra_end-extra_start,DSK,"build/LiquidLogic.dsk"
 
 ;------------------------------------------------------------------
 ; Bank 4 (C4, στο #4000-#7FFF): οι πίστες. level_table πρώτο, στο #4000.

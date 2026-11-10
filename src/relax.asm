@@ -3,8 +3,40 @@
 ; μπουκάλια και το έξτρα (E). Ανακατεύονται όλες οι στρώσεις μαζί· όσες
 ; ανακατωσιές αφήνουν μπουκάλι ήδη μονόχρωμο απορρίπτονται.
 
-; Γράφει μια καινούργια πίστα στο level_buf (μορφή levels.asm).
+; Γράφει μια καινούργια πίστα στο level_buf (μορφή levels.asm). Με seed
+; (relax_seed): η πίστα relax_num του last_seed, ίδια σε κάθε CPC, με δικό της
+; seed στο rnd (το κανονικό συνεχίζει μετά όπως ήταν).
 relax_gen:
+        ld a,(relax_seed)
+        or a
+        jr z,relax_make
+        ld hl,(rnd_seed)
+        push hl
+        ld hl,relax_num
+        inc (hl)
+        ld b,(hl)
+        ld hl,(last_seed)       ; seed + αριθμός * 257 (ίδιος αριθμός: άλλο
+        ld a,b                  ; seed, άλλο αποτέλεσμα), ποτέ 0
+        add a,h
+        ld h,a
+        ld a,b
+        add a,l
+        ld l,a
+        or h
+        jr nz,.nz
+        inc l
+.nz:    ld (rnd_seed),hl
+        ld b,8                  ; ανακάτεμα του seed
+.mix:   push bc
+        call rnd
+        pop bc
+        djnz .mix
+        call relax_make
+        pop hl
+        ld (rnd_seed),hl
+        ret
+
+relax_make:
         ld hl,relax_cols        ; τα χρώματα: 12 pens, ανακατεμένα
         ld a,PEN_LIQUID
         ld b,12

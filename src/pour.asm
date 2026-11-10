@@ -424,8 +424,12 @@ pour_finish:
 ; Πτήση της πηγής (όρθιας) σε FLY_N καρέ, σε ευθεία, με 8.8 βήματα.
 ; in: C = x, B = y προορισμού· από (fly_x, fly_y).
 fly_start:
+        ld a,(opt_speed)        ; γρήγορη: μισά βήματα, διπλά μεγάλα
+        or a
         ld a,FLY_N
-        ld (fly_cnt),a
+        jr z,.n
+        ld a,FLY_N/2
+.n:     ld (fly_cnt),a
         ld a,(fly_x)
         ld h,a
         ld l,#80
@@ -451,6 +455,10 @@ fly_start:
         add hl,hl
         add hl,hl
         add hl,hl
+        add hl,hl
+        ld a,(opt_speed)
+        or a
+        ret z
         add hl,hl
         ret
         assert FLY_N == 8
